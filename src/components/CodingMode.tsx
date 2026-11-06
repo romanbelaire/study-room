@@ -1,16 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
-import {
-  fetchPythonChallenges,
-  recordOutcome,
-  runPythonChallenge,
-  type PythonChallenge,
-} from '../lib/api'
+import { fetchPythonChallenges, recordOutcome, type PythonChallenge } from '../lib/api'
+import { runChallengeInBrowser, warmPyodide } from '../lib/pyodide-runner'
 import { Button } from './ui/button'
 import { cn } from '../lib/utils'
 
 /**
  * Strict untimed Python coding desk.
- * Real CPython + numpy via /api/coding/python/run — no in-app AI helpers, hints, or solutions.
+ * Runs vendored numpy tests in-browser via Pyodide — no host execution, no AI helpers.
  */
 export function CodingMode({ topicId }: { topicId: string }) {
   const [challenges, setChallenges] = useState<PythonChallenge[]>([])
@@ -19,12 +15,29 @@ export function CodingMode({ topicId }: { topicId: string }) {
   const [error, setError] = useState<string | null>(null)
   const [code, setCode] = useState('')
   const [running, setRunning] = useState(false)
+  const [runtimeReady, setRuntimeReady] = useState(false)
   const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null)
 
   const challenge = useMemo(
     () => challenges.find((c) => c.id === challengeId),
     [challenges, challengeId],
   )
+
+  useEffect(() => {
+    warmPyodide()
+    let cancelled = false
+    import('../lib/pyodide-runner')
+      .then(({ getPyodide }) => getPyodide())
+      .then(() => {
+        if (!cancelled) setRuntimeReady(true)
+      })
+      .catch(() => {
+        /* first Run tests will surface the error */
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -62,8 +75,9 @@ export function CodingMode({ topicId }: { topicId: string }) {
     setRunning(true)
     setResult(null)
     try {
-      const out = await runPythonChallenge(challenge.id, code)
+      const out = await runChallengeInBrowser(code, challenge.tests)
       setResult({ ok: out.ok, message: out.message })
+      setRuntimeReady(true)
       void recordOutcome({
         topicId,
         kind: 'coding',
@@ -103,7 +117,9 @@ export function CodingMode({ topicId }: { topicId: string }) {
             </option>
           ))}
         </select>
-        <span className="text-xs text-mist">untimed · strict · CPython</span>
+        <span className="text-xs text-mist">
+          untimed · strict · Pyodide{runtimeReady ? '' : ' · loading…'}
+        </span>
       </div>
 
       <p className="text-[11px] leading-relaxed text-mist/80">{challenge.attribution}</p>

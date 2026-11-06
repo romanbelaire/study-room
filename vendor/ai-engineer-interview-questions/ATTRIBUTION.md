@@ -16,4 +16,4 @@ Vendored files (starter / tests / reference / PROBLEM.md):
 - `06_kv_cache`
 - `07_mini_gpt_forward`
 
-Upstream README: practise by implementing from the PROBLEM statement, then running tests with `python3`. Lattice runs the same test harness server-side in an isolated temp directory (untimed).
+Upstream README: practise by implementing from the PROBLEM statement, then running tests with `python3`. Lattice runs the same test harness in-browser via Pyodide (Wasm + numpy); untimed and strict.

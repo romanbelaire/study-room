@@ -5,7 +5,7 @@ Quiet study desk for research-scientist interview prep (and any topic you add).
 ## Modes
 
 - **Knowledge** — MCQs; outcomes write to the learner journey
-- **Coding** — untimed strict Python (CPython + numpy); vendored MIT challenges; pass/fail → journey buckets; no in-app AI helpers
+- **Coding** — untimed strict Python in-browser (Pyodide + numpy); vendored MIT challenges; pass/fail → journey buckets; no in-app AI helpers
 - **Discussion** — MCP harness for a host agent (not in-app chat)
 - **Journey** — struggles / quick-forget / confirmed knowledge bank
 
@@ -17,14 +17,14 @@ All alternate answers must match the correct answer in **complexity, length, spe
 
 ### Agent-generated sets
 
-Shipped seeds bootstrap Knowledge. Coding uses a **real server-side Python runner** against a vendored MIT subset of [`ombharatiya/AI-Engineer-Interview-Questions`](https://github.com/ombharatiya/AI-Engineer-Interview-Questions) (`12-coding-challenges/`). See `vendor/ai-engineer-interview-questions/ATTRIBUTION.md`. The MCP agent can still author MCQ sets via `get_generation_brief` → `save_mcqs` (see `skills/generate-set.md`). Journey outcomes use challenge ids as item keys.
+Shipped seeds bootstrap Knowledge. Coding runs a **browser Pyodide** runner (Wasm + numpy) against a vendored MIT subset of [`ombharatiya/AI-Engineer-Interview-Questions`](https://github.com/ombharatiya/AI-Engineer-Interview-Questions) (`12-coding-challenges/`). Submitted code never executes on the Cursor host. See `vendor/ai-engineer-interview-questions/ATTRIBUTION.md`. The MCP agent can still author MCQ sets via `get_generation_brief` → `save_mcqs` (see `skills/generate-set.md`). Journey outcomes use challenge ids as item keys.
 
 ## Coding runner
 
-- Challenges live under `vendor/ai-engineer-interview-questions/challenges/` (starter + PROBLEM + tests; reference kept on disk for smoke only — never sent to the client).
-- `POST /api/coding/python/run` writes the submission to a temp dir as `solution.py`, runs `python3 tests.py` with a hard timeout, returns pass/fail + stderr.
+- Challenges live under `vendor/ai-engineer-interview-questions/challenges/` (starter + PROBLEM + tests; reference kept on disk for offline smoke only — never sent to the client).
+- `GET /api/coding/python` serves problem / starter / tests only (read-only). There is **no** server-side execute endpoint.
+- The browser loads Pyodide from the public CDN, installs numpy in Wasm, writes `solution.py` + `tests.py` into the Pyodide FS, and runs the suite locally (25s client timeout).
 - Mode is **untimed** and **strict**: no hints, no solution reveal, no in-app AI helpers.
-- Requires host `python3` with `numpy` (local / published Node host).
 
 ## Run
 

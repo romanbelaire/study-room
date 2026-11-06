@@ -147,6 +147,7 @@ export type PythonChallenge = {
   difficulty: 'easy' | 'medium' | 'hard'
   problem: string
   starter: string
+  tests: string
   attribution: string
 }
 
@@ -155,17 +156,4 @@ export async function fetchPythonChallenges(): Promise<PythonChallenge[]> {
     await fetch('/api/coding/python'),
   )
   return data.challenges
-}
-
-export async function runPythonChallenge(
-  challengeId: string,
-  code: string,
-): Promise<{ ok: boolean; message: string; stdout: string; stderr: string }> {
-  return json(
-    await fetch('/api/coding/python/run', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ challengeId, code }),
-    }),
-  )
 }
