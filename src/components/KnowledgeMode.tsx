@@ -1,11 +1,8 @@
-import { useMemo, useState } from 'react'
-import { MCQS, TOPIC_LABELS, type Difficulty, type Mcq, type McqTopic } from '../data/mcqs'
-import { recordOutcome } from '../lib/api'
+import { useEffect, useMemo, useState } from 'react'
+import { MCQS, type Difficulty } from '../data/mcqs'
+import { fetchMcqContent, recordOutcome, type ContentMcq } from '../lib/api'
 import { Button } from './ui/button'
 import { cn } from '../lib/utils'
-
-const ALL = 'all'
-type TopicFilter = McqTopic | typeof ALL
 
 function shuffle<T>(arr: T[]): T[] {
   const a = [...arr]
@@ -16,40 +13,75 @@ function shuffle<T>(arr: T[]): T[] {
   return a
 }
 
-const difficultyRank: Record<Difficulty, number> = { easy: 0, medium: 1, hard: 2 }
+const difficultyRank: Record<string, number> = { easy: 0, medium: 1, hard: 2 }
 
-function buildDeck(topic: TopicFilter): Mcq[] {
-  const filtered = MCQS.filter((q) => topic === ALL || q.topic === topic).sort(
-    (a, b) => difficultyRank[a.difficulty] - difficultyRank[b.difficulty],
+function seedsAsContent(): ContentMcq[] {
+  return MCQS.map((q) => ({
+    id: q.id,
+    difficulty: q.difficulty,
+    question: q.question,
+    choices: q.choices,
+    answer_index: q.answerIndex,
+    explanation: q.explanation,
+    source: 'seed' as const,
+  }))
+}
+
+function buildDeck(items: ContentMcq[]): ContentMcq[] {
+  return shuffle(
+    [...items].sort(
+      (a, b) =>
+        (difficultyRank[a.difficulty] ?? 1) - (difficultyRank[b.difficulty] ?? 1),
+    ),
   )
-  return shuffle(filtered)
 }
 
 export function KnowledgeMode({ topicId }: { topicId: string }) {
-  const [slice, setSlice] = useState<TopicFilter>(ALL)
-  const [deck, setDeck] = useState<Mcq[]>(() => buildDeck(ALL))
+  const [deck, setDeck] = useState<ContentMcq[]>([])
   const [index, setIndex] = useState(0)
   const [picked, setPicked] = useState<number | null>(null)
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [source, setSource] = useState<'generated' | 'seed'>('seed')
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    setPicked(null)
+    setError(null)
+    fetchMcqContent(topicId)
+      .then((data) => {
+        if (cancelled) return
+        if (data.preferGenerated && data.generated.length) {
+          setSource('generated')
+          setDeck(buildDeck(data.generated))
+        } else {
+          setSource('seed')
+          setDeck(buildDeck(seedsAsContent()))
+        }
+        setIndex(0)
+        setLoading(false)
+      })
+      .catch((err) => {
+        if (cancelled) return
+        setSource('seed')
+        setDeck(buildDeck(seedsAsContent()))
+        setIndex(0)
+        setLoading(false)
+        setError(err instanceof Error ? err.message : String(err))
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [topicId])
 
   const empty = deck.length === 0
   const q = deck[index]
 
-  function selectSlice(next: TopicFilter) {
-    setSlice(next)
-    setPicked(null)
-    setLoading(true)
-    window.setTimeout(() => {
-      setDeck(buildDeck(next))
-      setIndex(0)
-      setLoading(false)
-    }, 120)
-  }
-
   function pick(i: number) {
     if (!q || picked !== null) return
     setPicked(i)
-    const outcome = i === q.answerIndex ? 'correct' : 'wrong'
+    const outcome = i === q.answer_index ? 'correct' : 'wrong'
     void recordOutcome({
       topicId,
       kind: 'mcq',
@@ -59,11 +91,11 @@ export function KnowledgeMode({ topicId }: { topicId: string }) {
     })
   }
 
-  const correct = picked !== null && q && picked === q.answerIndex
-  const wrong = picked !== null && q && picked !== q.answerIndex
+  const correct = picked !== null && q && picked === q.answer_index
+  const wrong = picked !== null && q && picked !== q.answer_index
 
   const progress = useMemo(() => {
-    if (!deck.length) return `0 / ${MCQS.length}`
+    if (!deck.length) return '0 / 0'
     return `${Math.min(index + 1, deck.length)} / ${deck.length}`
   }, [deck.length, index])
 
@@ -80,42 +112,25 @@ export function KnowledgeMode({ topicId }: { topicId: string }) {
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-center gap-3">
-        <select
-          id="topic"
-          aria-label="Topic"
-          className="h-9 rounded border-0 bg-panel-2 px-2 text-sm text-foam"
-          value={slice}
-          onChange={(e) => selectSlice(e.target.value as TopicFilter)}
-        >
-          <option value={ALL}>All slices ({MCQS.length})</option>
-          {Object.entries(TOPIC_LABELS).map(([k, label]) => {
-            const n = MCQS.filter((q) => q.topic === k).length
-            return (
-              <option key={k} value={k}>
-                {label} ({n})
-              </option>
-            )
-          })}
-        </select>
+        <span className="text-xs text-mist">
+          {source === 'generated' ? 'agent set' : 'seed fallback'}
+        </span>
         <span className="ml-auto font-mono text-xs text-mist">{progress}</span>
       </div>
 
-      {loading && <p className="text-sm text-mist">Shuffling…</p>}
+      {loading && <p className="text-sm text-mist">Loading…</p>}
+      {error && <p className="text-xs text-mist">Using seeds ({error})</p>}
 
       {!loading && empty && (
-        <div className="space-y-3">
-          <p className="text-sm text-mist">No questions in this slice.</p>
-          <Button size="sm" onClick={() => selectSlice(ALL)}>
-            All slices
-          </Button>
-        </div>
+        <p className="text-sm text-mist">No questions yet — ask the MCP agent to generate a set.</p>
       )}
 
       {!loading && !empty && q && (
         <div className="flex flex-col gap-5">
           <div>
             <p className="mb-2 text-xs text-mist">
-              {TOPIC_LABELS[q.topic]} · {q.difficulty}
+              {q.difficulty as Difficulty}
+              {source === 'generated' ? ' · generated' : ' · seed'}
             </p>
             <p className="text-lg leading-snug text-foam">{q.question}</p>
           </div>
@@ -123,7 +138,7 @@ export function KnowledgeMode({ topicId }: { topicId: string }) {
           <div className="flex flex-col gap-2">
             {q.choices.map((choice, i) => {
               const selected = picked === i
-              const showRight = picked !== null && i === q.answerIndex
+              const showRight = picked !== null && i === q.answer_index
               const showWrong = selected && wrong
               return (
                 <button
@@ -139,7 +154,9 @@ export function KnowledgeMode({ topicId }: { topicId: string }) {
                     picked !== null && !showRight && !showWrong && 'text-mist/50',
                   )}
                 >
-                  <span className="mr-2 font-mono text-xs text-mist">{String.fromCharCode(65 + i)}</span>
+                  <span className="mr-2 font-mono text-xs text-mist">
+                    {String.fromCharCode(65 + i)}
+                  </span>
                   {choice}
                 </button>
               )

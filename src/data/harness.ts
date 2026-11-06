@@ -23,6 +23,10 @@ export const TOOL_CATALOG = [
   { name: 'list_study_topics', use: 'List arbitrary topic tabs' },
   { name: 'create_study_topic', use: 'Create a topic tab' },
   { name: 'open_topic', use: 'First-connect title + prefill' },
+  { name: 'get_generation_brief', use: 'Brief to author frontier set' },
+  { name: 'save_mcqs', use: 'Persist generated MCQs (parity check)' },
+  { name: 'save_coding_tasks', use: 'Persist generated coding drills' },
+  { name: 'list_topic_content', use: 'List generated content for a topic' },
   { name: 'get_journey', use: 'Struggles / quick-forget / confirmed' },
   { name: 'record_outcome', use: 'Write MCQ/coding outcome' },
   { name: 'set_journey_bucket', use: 'Manual bucket placement' },
@@ -37,6 +41,7 @@ export const TOOL_CATALOG = [
 
 export const PROMPT_CATALOG = [
   'first-connect',
+  'generate-set',
   'screen-research-agenda',
   'openai-ml-math-live',
   'anthropic-coderpad',
@@ -54,6 +59,7 @@ export const RESOURCE_CATALOG = [
   { uri: 'lattice://study-topics', name: 'Learner topic tabs' },
   { uri: 'lattice://journey', name: 'Learner journey banks' },
   { uri: 'lattice://skill/first-connect', name: 'First-connect skill' },
+  { uri: 'lattice://skill/generate-set', name: 'Generate-set skill' },
 ] as const
 
 export const TOPICS = [

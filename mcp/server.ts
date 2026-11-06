@@ -12,6 +12,13 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod'
 import {
+  generationBrief,
+  listGeneratedCoding,
+  listGeneratedMcqs,
+  saveCodingTasks,
+  saveMcqs,
+} from '../server/content.ts'
+import {
   createTopic,
   ensureSeedTopics,
   getJourney,
@@ -639,7 +646,7 @@ server.registerTool(
     },
   },
   async ({ learnerId, topicId }) =>
-    text(await getJourney(learnerId ?? 'local-learner', topicId)),
+    text(await getJourney(learnerId ?? 'mcp-local', topicId)),
 )
 
 server.registerTool(
@@ -660,7 +667,7 @@ server.registerTool(
   async (args) =>
     text(
       await recordOutcome({
-        learnerId: args.learnerId ?? 'local-learner',
+        learnerId: args.learnerId ?? 'mcp-local',
         topicId: args.topicId,
         kind: args.kind,
         itemKey: args.itemKey,
@@ -689,7 +696,7 @@ server.registerTool(
   async (args) =>
     text(
       await setBucket({
-        learnerId: args.learnerId ?? 'local-learner',
+        learnerId: args.learnerId ?? 'mcp-local',
         topicId: args.topicId,
         kind: args.kind,
         itemKey: args.itemKey,
@@ -700,11 +707,121 @@ server.registerTool(
     ),
 )
 
+const mcqItem = z.object({
+  difficulty: z.enum(['easy', 'medium', 'hard']),
+  question: z.string(),
+  choices: z.array(z.string()).length(4),
+  answerIndex: z.number().int().min(0).max(3),
+  explanation: z.string(),
+})
+
+const codingItem = z.object({
+  title: z.string(),
+  difficulty: z.enum(['easy', 'medium', 'hard']),
+  prompt: z.string(),
+  starter: z.string(),
+  hint: z.string(),
+  solution: z.string(),
+  checkFn: z.string(),
+})
+
+server.registerTool(
+  'get_generation_brief',
+  {
+    title: 'Generation brief',
+    description:
+      'Instructions + schema to author a frontier MCQ/coding set for a topic. Enforces mcq-authoring distractor parity.',
+    inputSchema: {
+      topicId: z.string(),
+      learnerId: z.string().optional(),
+    },
+  },
+  async ({ topicId, learnerId }) => {
+    const lid = learnerId ?? 'mcp-local'
+    const topics = await listStudyTopics(lid)
+    const topic = topics.find((t) => t.id === topicId)
+    if (!topic) throw new Error(`Unknown or inaccessible topic ${topicId}`)
+    return text({
+      ...generationBrief(topic.title, topic.id),
+      skill: readFileSync(resolve(process.cwd(), 'skills/generate-set.md'), 'utf8'),
+      mcqAuthoring: readFileSync(resolve(process.cwd(), 'skills/mcq-authoring.md'), 'utf8'),
+    })
+  },
+)
+
+server.registerTool(
+  'save_mcqs',
+  {
+    title: 'Save generated MCQs',
+    description:
+      'Persist agent-authored MCQs for a topic (Postgres/PGlite). Rejects distractor length parity failures.',
+    inputSchema: {
+      topicId: z.string(),
+      items: z.array(mcqItem).min(1),
+      learnerId: z.string().optional(),
+    },
+  },
+  async ({ topicId, items, learnerId }) =>
+    text(await saveMcqs(topicId, learnerId ?? 'mcp-local', items)),
+)
+
+server.registerTool(
+  'save_coding_tasks',
+  {
+    title: 'Save generated coding tasks',
+    description: 'Persist agent-authored coding drills (solve + check) for a topic.',
+    inputSchema: {
+      topicId: z.string(),
+      items: z.array(codingItem).min(1),
+      learnerId: z.string().optional(),
+    },
+  },
+  async ({ topicId, items, learnerId }) =>
+    text(await saveCodingTasks(topicId, learnerId ?? 'mcp-local', items)),
+)
+
+server.registerTool(
+  'list_topic_content',
+  {
+    title: 'List topic content',
+    description: 'List generated MCQs and coding tasks the UI will prefer over seeds.',
+    inputSchema: {
+      topicId: z.string(),
+      learnerId: z.string().optional(),
+    },
+  },
+  async ({ topicId, learnerId }) => {
+    const lid = learnerId ?? 'mcp-local'
+    const mcqs = await listGeneratedMcqs(topicId, lid)
+    const coding = await listGeneratedCoding(topicId, lid)
+    return text({ mcqs, coding, preferGenerated: mcqs.length > 0 || coding.length > 0 })
+  },
+)
+
+server.registerResource(
+  'generate-set-skill',
+  'lattice://skill/generate-set',
+  {
+    title: 'Generate study set skill',
+    description: 'How the host agent authors and saves frontier MCQs/coding tasks',
+    mimeType: 'text/markdown',
+  },
+  async (uri) => ({
+    contents: [
+      {
+        uri: uri.href,
+        text: readFileSync(resolve(process.cwd(), 'skills/generate-set.md'), 'utf8'),
+        mimeType: 'text/markdown',
+      },
+    ],
+  }),
+)
+
 server.registerPrompt(
   'first-connect',
   {
     title: 'Agent first-connect',
-    description: 'Rename chat to topic + prefill What are you studying?',
+    description: 'Rename chat, prefill What are you studying?, then generate a set',
     argsSchema: {
       topicId: z.string().optional(),
       topicTitle: z.string().optional(),
@@ -714,7 +831,7 @@ server.registerPrompt(
     promptMessages(
       'First connect',
       [
-        'Follow lattice://skill/first-connect.',
+        'Follow lattice://skill/first-connect then lattice://skill/generate-set.',
         topicId
           ? `Call open_topic with topicId=${topicId}.`
           : topicTitle
@@ -723,6 +840,29 @@ server.registerPrompt(
         'Set chat title to suggestedChatTitle.',
         'Prefill exactly: What are you studying?',
         'acknowledge=true after applying.',
+        'After the learner answers, get_generation_brief → save_mcqs (parity!) → optional save_coding_tasks.',
+      ].join('\n'),
+    ),
+)
+
+server.registerPrompt(
+  'generate-set',
+  {
+    title: 'Generate study set',
+    description: 'Author and persist frontier MCQs/coding for the active topic',
+    argsSchema: {
+      topicId: z.string(),
+    },
+  },
+  ({ topicId }) =>
+    promptMessages(
+      'Generate set',
+      [
+        'Follow lattice://skill/generate-set and skills/mcq-authoring.md.',
+        `get_generation_brief topicId=${topicId}`,
+        'Author 5–10 parallel-option MCQs; save_mcqs.',
+        'Optionally 1–3 coding tasks; save_coding_tasks.',
+        'list_topic_content to confirm.',
       ].join('\n'),
     ),
 )

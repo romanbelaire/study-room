@@ -46,7 +46,7 @@ export default function App() {
     setConnectHint(null)
     const session = await openTopic(id, false)
     setConnectHint(
-      `${session.suggestedChatTitle} · prefill “${session.prefillMessage}”`,
+      `${session.suggestedChatTitle} · “${session.prefillMessage}” · then generate set`,
     )
   }
 

@@ -2,6 +2,13 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import { getIdentity, type PersonIdentity } from '../cursor/identity.ts'
 import { dbMode } from './db.ts'
 import {
+  generationBrief,
+  listGeneratedCoding,
+  listGeneratedMcqs,
+  saveCodingTasks,
+  saveMcqs,
+} from './content.ts'
+import {
   createTopic,
   deleteTopic,
   getJourney,
@@ -153,6 +160,78 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse): Prom
         notes: body.notes,
       })
       send(res, 200, { item })
+      return true
+    }
+
+    if (url.pathname === '/api/content/mcqs' && req.method === 'GET') {
+      const topicId = url.searchParams.get('topicId')
+      if (!topicId) {
+        send(res, 400, { error: 'topicId required' })
+        return true
+      }
+      const generated = await listGeneratedMcqs(topicId, learner)
+      send(res, 200, { generated, preferGenerated: generated.length > 0 })
+      return true
+    }
+
+    if (url.pathname === '/api/content/coding' && req.method === 'GET') {
+      const topicId = url.searchParams.get('topicId')
+      if (!topicId) {
+        send(res, 400, { error: 'topicId required' })
+        return true
+      }
+      const generated = await listGeneratedCoding(topicId, learner)
+      send(res, 200, { generated, preferGenerated: generated.length > 0 })
+      return true
+    }
+
+    if (url.pathname === '/api/content/mcqs' && req.method === 'POST') {
+      const body = (await readBody(req)) as {
+        topicId: string
+        items: Array<{
+          difficulty: string
+          question: string
+          choices: string[]
+          answerIndex: number
+          explanation: string
+        }>
+      }
+      const saved = await saveMcqs(body.topicId, learner, body.items ?? [])
+      send(res, 201, { saved })
+      return true
+    }
+
+    if (url.pathname === '/api/content/coding' && req.method === 'POST') {
+      const body = (await readBody(req)) as {
+        topicId: string
+        items: Array<{
+          title: string
+          difficulty: string
+          prompt: string
+          starter: string
+          hint: string
+          solution: string
+          checkFn: string
+        }>
+      }
+      const saved = await saveCodingTasks(body.topicId, learner, body.items ?? [])
+      send(res, 201, { saved })
+      return true
+    }
+
+    if (url.pathname === '/api/content/brief' && req.method === 'GET') {
+      const topicId = url.searchParams.get('topicId')
+      if (!topicId) {
+        send(res, 400, { error: 'topicId required' })
+        return true
+      }
+      const topics = await listTopics(learner)
+      const topic = topics.find((t) => t.id === topicId)
+      if (!topic) {
+        send(res, 404, { error: 'topic not found' })
+        return true
+      }
+      send(res, 200, generationBrief(topic.title, topic.id))
       return true
     }
 

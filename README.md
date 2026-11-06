@@ -15,6 +15,10 @@ Topic tabs are **arbitrary** (Add your own). Seeds ship for convenience only.
 
 All alternate answers must match the correct answer in **complexity, length, specificity, and register** — no solving by “which option looks different.” Plausible near-misses only. Full checklist: `skills/mcq-authoring.md`.
 
+### Agent-generated sets
+
+Shipped seeds bootstrap Knowledge/Coding. The attached MCP agent authors **frontier** sets per topic via `get_generation_brief` → `save_mcqs` / `save_coding_tasks` (see `skills/generate-set.md`). Generated rows live in Postgres/PGlite; the UI prefers them when present (label: “agent set” vs “seed fallback”). Journey outcomes use the same item keys.
+
 ## Run
 
 ```bash
@@ -63,7 +67,8 @@ Learner key: always Cursor identity `sub` (simulated locally via `cursor/identit
 | Tool | Role |
 | --- | --- |
 | `list_study_topics` / `create_study_topic` | Arbitrary topic tabs |
-| `open_topic` | First-connect: `suggestedChatTitle`, `prefillMessage` |
+| `open_topic` | First-connect: title + prefill; hints generate-set |
+| `get_generation_brief` / `save_mcqs` / `save_coding_tasks` / `list_topic_content` | Agent-authored study sets |
 | `get_journey` / `record_outcome` / `set_journey_bucket` | Journey banks |
 
 Resources: `lattice://study-topics`, `lattice://journey`, `lattice://skill/first-connect`  

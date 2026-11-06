@@ -55,7 +55,7 @@ export async function ensureSeedTopics(): Promise<void> {
   }
 }
 
-function assertTopicAccess(topic: Topic, learnerId: string, mutate: boolean): void {
+export function assertTopicAccess(topic: Topic, learnerId: string, mutate: boolean): void {
   const sharedSeed = topic.owner_id === null
   if (sharedSeed && mutate) throw new Error('forbidden: cannot modify shared seed topics')
   if (!sharedSeed && topic.owner_id !== learnerId) {
@@ -159,6 +159,9 @@ export async function openTopicSession(
     ...payload,
     firstConnect: session.length === 0 || !acknowledge,
     lastConnectedAt: session[0]?.connected_at ?? null,
+    generateSet: true as const,
+    generationNote:
+      'After the learner answers “What are you studying?”, call get_generation_brief then save_mcqs (and optionally save_coding_tasks). Follow skills/mcq-authoring.md distractor parity.',
   }
 }
 

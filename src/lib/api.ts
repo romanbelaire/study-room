@@ -100,3 +100,43 @@ export async function recordOutcome(body: {
   )
   return data.item
 }
+
+export type ContentMcq = {
+  id: string
+  difficulty: string
+  question: string
+  choices: string[]
+  answer_index: number
+  explanation: string
+  source: 'generated' | 'seed'
+}
+
+export type ContentCoding = {
+  id: string
+  title: string
+  difficulty: string
+  prompt: string
+  starter: string
+  hint: string
+  solution: string
+  check_fn: string
+  source: 'generated' | 'seed'
+}
+
+export async function fetchMcqContent(topicId: string): Promise<{
+  generated: ContentMcq[]
+  preferGenerated: boolean
+}> {
+  return json(
+    await fetch(`/api/content/mcqs?topicId=${encodeURIComponent(topicId)}`),
+  )
+}
+
+export async function fetchCodingContent(topicId: string): Promise<{
+  generated: ContentCoding[]
+  preferGenerated: boolean
+}> {
+  return json(
+    await fetch(`/api/content/coding?topicId=${encodeURIComponent(topicId)}`),
+  )
+}
