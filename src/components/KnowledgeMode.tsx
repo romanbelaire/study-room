@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { CheckCircle2, CircleX, Loader2 } from 'lucide-react'
 import { MCQS, TOPIC_LABELS, type Difficulty, type Mcq, type McqTopic } from '../data/mcqs'
 import { Button } from './ui/button'
@@ -19,42 +19,41 @@ function shuffle<T>(arr: T[]): T[] {
 
 const difficultyRank: Record<Difficulty, number> = { easy: 0, medium: 1, hard: 2 }
 
+function buildDeck(topic: TopicFilter): Mcq[] {
+  const filtered = MCQS.filter((q) => topic === ALL || q.topic === topic).sort(
+    (a, b) => difficultyRank[a.difficulty] - difficultyRank[b.difficulty],
+  )
+  return shuffle(filtered)
+}
+
 export function KnowledgeMode() {
   const [topic, setTopic] = useState<TopicFilter>(ALL)
-  const [loading, setLoading] = useState(true)
-  const [deck, setDeck] = useState<Mcq[]>([])
+  // Synchronous seed — first paint must show questions (publish preview was 0/0 blank).
+  const [deck, setDeck] = useState<Mcq[]>(() => buildDeck(ALL))
   const [index, setIndex] = useState(0)
   const [picked, setPicked] = useState<number | null>(null)
-  const [empty, setEmpty] = useState(false)
+  const [loading, setLoading] = useState(false)
 
-  useEffect(() => {
-    setLoading(true)
+  const empty = deck.length === 0
+  const q = deck[index]
+
+  function selectTopic(next: TopicFilter) {
+    setTopic(next)
     setPicked(null)
-    const t = window.setTimeout(() => {
-      const filtered = MCQS.filter((q) => topic === ALL || q.topic === topic).sort(
-        (a, b) => difficultyRank[a.difficulty] - difficultyRank[b.difficulty],
-      )
-      if (filtered.length === 0) {
-        setDeck([])
-        setEmpty(true)
-        setLoading(false)
-        return
-      }
-      setEmpty(false)
-      setDeck(shuffle(filtered))
+    setLoading(true)
+    window.setTimeout(() => {
+      setDeck(buildDeck(next))
       setIndex(0)
       setLoading(false)
-    }, 420)
-    return () => window.clearTimeout(t)
-  }, [topic])
+    }, 160)
+  }
 
-  const q = deck[index]
   const correct = picked !== null && q && picked === q.answerIndex
   const wrong = picked !== null && q && picked !== q.answerIndex
 
   const progress = useMemo(() => {
-    if (!deck.length) return '0 / 0'
-    return `${index + 1} / ${deck.length}`
+    if (!deck.length) return `0 / ${MCQS.length}`
+    return `${Math.min(index + 1, deck.length)} / ${deck.length}`
   }, [deck.length, index])
 
   function next() {
@@ -77,14 +76,17 @@ export function KnowledgeMode() {
           id="topic"
           className="h-8 rounded-md border border-line bg-panel-2 px-2 text-sm text-foam"
           value={topic}
-          onChange={(e) => setTopic(e.target.value as TopicFilter)}
+          onChange={(e) => selectTopic(e.target.value as TopicFilter)}
         >
-          <option value={ALL}>All topics</option>
-          {Object.entries(TOPIC_LABELS).map(([k, label]) => (
-            <option key={k} value={k}>
-              {label}
-            </option>
-          ))}
+          <option value={ALL}>All topics ({MCQS.length})</option>
+          {Object.entries(TOPIC_LABELS).map(([k, label]) => {
+            const n = MCQS.filter((q) => q.topic === k).length
+            return (
+              <option key={k} value={k}>
+                {label} ({n})
+              </option>
+            )
+          })}
         </select>
         <span className="ml-auto font-mono text-xs text-mist">{progress}</span>
       </div>
@@ -106,9 +108,9 @@ export function KnowledgeMode() {
         <div className="animate-rise flex flex-1 flex-col items-start justify-center gap-2 rounded-lg border border-dashed border-line bg-panel-2/40 p-6">
           <p className="font-display text-xl text-amber">No questions in this slice</p>
           <p className="max-w-md text-sm text-mist">
-            That topic filter is empty in the seed deck. Switch to All topics or another area.
+            That topic filter is empty in the seed deck ({MCQS.length} total). Switch to All topics.
           </p>
-          <Button size="sm" onClick={() => setTopic(ALL)}>
+          <Button size="sm" onClick={() => selectTopic(ALL)}>
             Show all topics
           </Button>
         </div>
