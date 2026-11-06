@@ -9,6 +9,11 @@ import {
   saveMcqs,
 } from './content.ts'
 import {
+  getPythonChallenge,
+  listPythonChallenges,
+  runPythonChallenge,
+} from './python-runner.ts'
+import {
   createTopic,
   deleteTopic,
   getJourney,
@@ -232,6 +237,33 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse): Prom
         return true
       }
       send(res, 200, generationBrief(topic.title, topic.id))
+      return true
+    }
+
+    if (url.pathname === '/api/coding/python' && req.method === 'GET') {
+      send(res, 200, { challenges: await listPythonChallenges() })
+      return true
+    }
+
+    const pyMatch = url.pathname.match(/^\/api\/coding\/python\/([^/]+)$/)
+    if (pyMatch && req.method === 'GET') {
+      send(res, 200, { challenge: await getPythonChallenge(decodeURIComponent(pyMatch[1])) })
+      return true
+    }
+
+    if (url.pathname === '/api/coding/python/run' && req.method === 'POST') {
+      const body = (await readBody(req)) as { challengeId?: string; code?: string }
+      if (!body.challengeId || typeof body.code !== 'string') {
+        send(res, 400, { error: 'challengeId and code required' })
+        return true
+      }
+      // Cap payload — private study app, still bound resource use.
+      if (body.code.length > 200_000) {
+        send(res, 413, { error: 'code too large' })
+        return true
+      }
+      const result = await runPythonChallenge(body.challengeId, body.code)
+      send(res, 200, result)
       return true
     }
 

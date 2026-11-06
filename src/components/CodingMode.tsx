@@ -1,174 +1,152 @@
 import { useEffect, useMemo, useState } from 'react'
-import { CODING_TASKS } from '../data/coding'
-import { fetchCodingContent, recordOutcome, type ContentCoding } from '../lib/api'
+import {
+  fetchPythonChallenges,
+  recordOutcome,
+  runPythonChallenge,
+  type PythonChallenge,
+} from '../lib/api'
 import { Button } from './ui/button'
 import { cn } from '../lib/utils'
 
-function runCheck(checkFn: string, solutionOrStudent: string): { ok: boolean; message: string } {
-  const wrapped = `${solutionOrStudent}\n;${checkFn}\n;return check(solve);`
-  try {
-    const fn = new Function(wrapped)
-    return { ok: true, message: String(fn()) }
-  } catch (err) {
-    return { ok: false, message: err instanceof Error ? err.message : String(err) }
-  }
-}
-
-function seedsAsContent(): ContentCoding[] {
-  return CODING_TASKS.map((t) => ({
-    id: t.id,
-    title: t.title,
-    difficulty: t.difficulty,
-    prompt: t.prompt,
-    starter: t.starter,
-    hint: t.hint,
-    solution: t.solution,
-    check_fn: t.check,
-    source: 'seed' as const,
-  }))
-}
-
+/**
+ * Strict untimed Python coding desk.
+ * Real CPython + numpy via /api/coding/python/run — no in-app AI helpers, hints, or solutions.
+ */
 export function CodingMode({ topicId }: { topicId: string }) {
-  const [tasks, setTasks] = useState<ContentCoding[]>([])
-  const [taskId, setTaskId] = useState('')
-  const [source, setSource] = useState<'generated' | 'seed'>('seed')
+  const [challenges, setChallenges] = useState<PythonChallenge[]>([])
+  const [challengeId, setChallengeId] = useState('')
   const [loading, setLoading] = useState(true)
-
-  const task = useMemo(() => {
-    const t = tasks.find((x) => x.id === taskId)
-    return t
-  }, [tasks, taskId])
-
+  const [error, setError] = useState<string | null>(null)
   const [code, setCode] = useState('')
-  const [hintOpen, setHintOpen] = useState(false)
-  const [solutionOpen, setSolutionOpen] = useState(false)
+  const [running, setRunning] = useState(false)
   const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null)
+
+  const challenge = useMemo(
+    () => challenges.find((c) => c.id === challengeId),
+    [challenges, challengeId],
+  )
 
   useEffect(() => {
     let cancelled = false
     setLoading(true)
-    fetchCodingContent(topicId)
-      .then((data) => {
+    setError(null)
+    fetchPythonChallenges()
+      .then((list) => {
         if (cancelled) return
-        const list =
-          data.preferGenerated && data.generated.length ? data.generated : seedsAsContent()
-        setSource(data.preferGenerated && data.generated.length ? 'generated' : 'seed')
-        setTasks(list)
-        setTaskId(list[0]?.id ?? '')
+        setChallenges(list)
+        setChallengeId(list[0]?.id ?? '')
         setCode(list[0]?.starter ?? '')
-        setHintOpen(false)
-        setSolutionOpen(false)
         setResult(null)
         setLoading(false)
       })
-      .catch(() => {
+      .catch((err) => {
         if (cancelled) return
-        const list = seedsAsContent()
-        setSource('seed')
-        setTasks(list)
-        setTaskId(list[0]?.id ?? '')
-        setCode(list[0]?.starter ?? '')
+        setError(err instanceof Error ? err.message : String(err))
         setLoading(false)
       })
     return () => {
       cancelled = true
     }
-  }, [topicId])
+  }, [])
 
-  function selectTask(id: string) {
-    setTaskId(id)
-    const next = tasks.find((x) => x.id === id)
-    if (!next) throw new Error(`Missing task ${id}`)
+  function selectChallenge(id: string) {
+    setChallengeId(id)
+    const next = challenges.find((c) => c.id === id)
+    if (!next) throw new Error(`Missing challenge ${id}`)
     setCode(next.starter)
-    setHintOpen(false)
-    setSolutionOpen(false)
     setResult(null)
   }
 
-  function check() {
-    if (!task) return
-    const out = runCheck(task.check_fn, code)
-    setResult(out)
-    void recordOutcome({
-      topicId,
-      kind: 'coding',
-      itemKey: task.id,
-      label: task.title,
-      outcome: out.ok ? 'pass' : 'fail',
-    })
+  async function runTests() {
+    if (!challenge || running) return
+    setRunning(true)
+    setResult(null)
+    try {
+      const out = await runPythonChallenge(challenge.id, code)
+      setResult({ ok: out.ok, message: out.message })
+      void recordOutcome({
+        topicId,
+        kind: 'coding',
+        itemKey: challenge.id,
+        label: challenge.title,
+        outcome: out.ok ? 'pass' : 'fail',
+      })
+    } catch (err) {
+      setResult({
+        ok: false,
+        message: err instanceof Error ? err.message : String(err),
+      })
+    } finally {
+      setRunning(false)
+    }
   }
 
   if (loading) return <p className="text-sm text-mist">Loading…</p>
-  if (!task) {
-    return (
-      <p className="text-sm text-mist">No coding tasks — ask the MCP agent to generate a set.</p>
-    )
+  if (error) return <p className="text-sm text-coral">Could not load challenges: {error}</p>
+  if (!challenge) {
+    return <p className="text-sm text-mist">No Python challenges available.</p>
   }
 
   return (
     <div className="flex flex-col gap-5">
       <div className="flex flex-wrap items-center gap-3">
         <select
-          id="task"
-          aria-label="Task"
+          id="challenge"
+          aria-label="Challenge"
           className="h-9 max-w-full rounded border-0 bg-panel-2 px-2 text-sm text-foam"
-          value={taskId}
-          onChange={(e) => selectTask(e.target.value)}
+          value={challengeId}
+          onChange={(e) => selectChallenge(e.target.value)}
         >
-          {tasks.map((t) => (
-            <option key={t.id} value={t.id}>
-              {t.title} · {t.difficulty}
+          {challenges.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.title} · {c.difficulty}
             </option>
           ))}
         </select>
-        <span className="text-xs text-mist">
-          {source === 'generated' ? 'agent set' : 'seed fallback'}
-        </span>
+        <span className="text-xs text-mist">untimed · strict · CPython</span>
       </div>
 
-      <p className="text-sm leading-relaxed text-mist">{task.prompt}</p>
+      <p className="text-[11px] leading-relaxed text-mist/80">{challenge.attribution}</p>
+
+      <pre className="max-h-48 overflow-auto whitespace-pre-wrap text-sm leading-relaxed text-mist">
+        {challenge.problem}
+      </pre>
 
       <textarea
         value={code}
         onChange={(e) => setCode(e.target.value)}
         spellCheck={false}
-        className="min-h-[200px] resize-y rounded bg-ink/80 p-3 font-mono text-[13px] leading-relaxed text-foam focus:outline-none focus:ring-1 focus:ring-teal/40"
-        aria-label="Code editor"
+        className="min-h-[280px] resize-y rounded bg-ink/80 p-3 font-mono text-[13px] leading-relaxed text-foam focus:outline-none focus:ring-1 focus:ring-teal/40"
+        aria-label="Python editor"
       />
 
       <div className="flex flex-wrap gap-2">
-        <Button size="sm" onClick={check}>
-          Run checks
-        </Button>
-        <Button size="sm" variant="ghost" onClick={() => setHintOpen((v) => !v)}>
-          {hintOpen ? 'Hide hint' : 'Hint'}
-        </Button>
-        <Button size="sm" variant="ghost" onClick={() => setSolutionOpen((v) => !v)}>
-          {solutionOpen ? 'Hide solution' : 'Solution'}
+        <Button size="sm" onClick={() => void runTests()} disabled={running}>
+          {running ? 'Running…' : 'Run tests'}
         </Button>
         <Button
           size="sm"
           variant="ghost"
           onClick={() => {
-            setCode(task.starter)
+            setCode(challenge.starter)
             setResult(null)
           }}
+          disabled={running}
         >
           Reset
         </Button>
       </div>
 
-      {hintOpen && <p className="text-sm text-amber">{task.hint}</p>}
-
-      {solutionOpen && (
-        <pre className="overflow-auto bg-ink/60 p-3 font-mono text-xs text-mist">{task.solution}</pre>
-      )}
-
       {result && (
-        <p className={cn('text-sm', result.ok ? 'text-ok' : 'text-coral')}>
+        <pre
+          className={cn(
+            'overflow-auto whitespace-pre-wrap bg-ink/60 p-3 font-mono text-xs',
+            result.ok ? 'text-ok' : 'text-coral',
+          )}
+        >
           {result.ok ? 'Passed: ' : 'Failed: '}
           {result.message}
-        </p>
+        </pre>
       )}
     </div>
   )

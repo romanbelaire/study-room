@@ -5,7 +5,7 @@ Quiet study desk for research-scientist interview prep (and any topic you add).
 ## Modes
 
 - **Knowledge** — MCQs; outcomes write to the learner journey
-- **Coding** — screen-faithful drills; pass/fail → journey buckets
+- **Coding** — untimed strict Python (CPython + numpy); vendored MIT challenges; pass/fail → journey buckets; no in-app AI helpers
 - **Discussion** — MCP harness for a host agent (not in-app chat)
 - **Journey** — struggles / quick-forget / confirmed knowledge bank
 
@@ -17,7 +17,14 @@ All alternate answers must match the correct answer in **complexity, length, spe
 
 ### Agent-generated sets
 
-Shipped seeds bootstrap Knowledge/Coding. The attached MCP agent authors **frontier** sets per topic via `get_generation_brief` → `save_mcqs` / `save_coding_tasks` (see `skills/generate-set.md`). Generated rows live in Postgres/PGlite; the UI prefers them when present (label: “agent set” vs “seed fallback”). Journey outcomes use the same item keys.
+Shipped seeds bootstrap Knowledge. Coding uses a **real server-side Python runner** against a vendored MIT subset of [`ombharatiya/AI-Engineer-Interview-Questions`](https://github.com/ombharatiya/AI-Engineer-Interview-Questions) (`12-coding-challenges/`). See `vendor/ai-engineer-interview-questions/ATTRIBUTION.md`. The MCP agent can still author MCQ sets via `get_generation_brief` → `save_mcqs` (see `skills/generate-set.md`). Journey outcomes use challenge ids as item keys.
+
+## Coding runner
+
+- Challenges live under `vendor/ai-engineer-interview-questions/challenges/` (starter + PROBLEM + tests; reference kept on disk for smoke only — never sent to the client).
+- `POST /api/coding/python/run` writes the submission to a temp dir as `solution.py`, runs `python3 tests.py` with a hard timeout, returns pass/fail + stderr.
+- Mode is **untimed** and **strict**: no hints, no solution reveal, no in-app AI helpers.
+- Requires host `python3` with `numpy` (local / published Node host).
 
 ## Run
 
