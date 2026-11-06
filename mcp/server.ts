@@ -6,9 +6,20 @@
  *
  * Log only on stderr — stdout is JSON-RPC.
  */
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod'
+import {
+  createTopic,
+  ensureSeedTopics,
+  getJourney,
+  listTopics as listStudyTopics,
+  openTopicSession,
+  recordOutcome,
+  setBucket,
+} from '../server/store.ts'
 import {
   BLUEPRINT,
   DRILL_TOPICS,
@@ -517,8 +528,202 @@ server.registerPrompt(
     ),
 )
 
+server.registerResource(
+  'study-topics',
+  'lattice://study-topics',
+  {
+    title: 'Learner study topics',
+    description: 'Arbitrary user-defined topic tabs (not only RS seed drills)',
+    mimeType: 'application/json',
+  },
+  async (uri) => ({
+    contents: [
+      {
+        uri: uri.href,
+        text: JSON.stringify(await listStudyTopics(), null, 2),
+        mimeType: 'application/json',
+      },
+    ],
+  }),
+)
+
+server.registerResource(
+  'journey',
+  'lattice://journey',
+  {
+    title: 'Learner journey',
+    description: 'Struggles, quick-forget, and confirmed knowledge bank',
+    mimeType: 'application/json',
+  },
+  async (uri) => ({
+    contents: [
+      {
+        uri: uri.href,
+        text: JSON.stringify(await getJourney('local-learner'), null, 2),
+        mimeType: 'application/json',
+      },
+    ],
+  }),
+)
+
+server.registerResource(
+  'first-connect-skill',
+  'lattice://skill/first-connect',
+  {
+    title: 'Agent first-connect skill',
+    description: 'Title rename + What are you studying? prefill for any topic',
+    mimeType: 'text/markdown',
+  },
+  async (uri) => ({
+    contents: [
+      {
+        uri: uri.href,
+        text: readFileSync(resolve(process.cwd(), 'skills/first-connect.md'), 'utf8'),
+        mimeType: 'text/markdown',
+      },
+    ],
+  }),
+)
+
+server.registerTool(
+  'list_study_topics',
+  {
+    title: 'List study topics',
+    description: 'List arbitrary learner topic tabs (create your own; not limited to RS seeds).',
+    inputSchema: {},
+  },
+  async () => text(await listStudyTopics()),
+)
+
+server.registerTool(
+  'create_study_topic',
+  {
+    title: 'Create study topic',
+    description: 'Create an arbitrary topic tab by title.',
+    inputSchema: {
+      title: z.string(),
+      notes: z.string().optional(),
+    },
+  },
+  async ({ title, notes }) => text(await createTopic(title, notes ?? '')),
+)
+
+server.registerTool(
+  'open_topic',
+  {
+    title: 'Open topic (first-connect)',
+    description:
+      'First-connect skill for a topic tab: returns suggestedChatTitle and prefillMessage (“What are you studying?”). Host must apply title+prefill, then call again with acknowledge=true.',
+    inputSchema: {
+      topicId: z.string(),
+      acknowledge: z.boolean().optional(),
+    },
+  },
+  async ({ topicId, acknowledge }) => text(await openTopicSession(topicId, Boolean(acknowledge))),
+)
+
+server.registerTool(
+  'get_journey',
+  {
+    title: 'Get learner journey',
+    description: 'Read struggles, quick-forget, and confirmed knowledge for a learner/topic.',
+    inputSchema: {
+      learnerId: z.string().optional(),
+      topicId: z.string().optional(),
+    },
+  },
+  async ({ learnerId, topicId }) =>
+    text(await getJourney(learnerId ?? 'local-learner', topicId)),
+)
+
+server.registerTool(
+  'record_outcome',
+  {
+    title: 'Record study outcome',
+    description: 'Record MCQ/coding/custom outcome; updates struggle / quick-forget / confirmed buckets.',
+    inputSchema: {
+      learnerId: z.string().optional(),
+      topicId: z.string(),
+      kind: z.enum(['mcq', 'coding', 'concept', 'custom']),
+      itemKey: z.string(),
+      label: z.string(),
+      outcome: z.enum(['correct', 'wrong', 'pass', 'fail']),
+      notes: z.string().optional(),
+    },
+  },
+  async (args) =>
+    text(
+      await recordOutcome({
+        learnerId: args.learnerId ?? 'local-learner',
+        topicId: args.topicId,
+        kind: args.kind,
+        itemKey: args.itemKey,
+        label: args.label,
+        outcome: args.outcome,
+        notes: args.notes,
+      }),
+    ),
+)
+
+server.registerTool(
+  'set_journey_bucket',
+  {
+    title: 'Set journey bucket',
+    description: 'Manually place an item into struggle | quick_forget | confirmed.',
+    inputSchema: {
+      learnerId: z.string().optional(),
+      topicId: z.string(),
+      kind: z.enum(['mcq', 'coding', 'concept', 'custom']),
+      itemKey: z.string(),
+      label: z.string(),
+      bucket: z.enum(['struggle', 'quick_forget', 'confirmed']),
+      notes: z.string().optional(),
+    },
+  },
+  async (args) =>
+    text(
+      await setBucket({
+        learnerId: args.learnerId ?? 'local-learner',
+        topicId: args.topicId,
+        kind: args.kind,
+        itemKey: args.itemKey,
+        label: args.label,
+        bucket: args.bucket,
+        notes: args.notes,
+      }),
+    ),
+)
+
+server.registerPrompt(
+  'first-connect',
+  {
+    title: 'Agent first-connect',
+    description: 'Rename chat to topic + prefill What are you studying?',
+    argsSchema: {
+      topicId: z.string().optional(),
+      topicTitle: z.string().optional(),
+    },
+  },
+  ({ topicId, topicTitle }) =>
+    promptMessages(
+      'First connect',
+      [
+        'Follow lattice://skill/first-connect.',
+        topicId
+          ? `Call open_topic with topicId=${topicId}.`
+          : topicTitle
+            ? `create_study_topic title="${topicTitle}", then open_topic.`
+            : 'list_study_topics, then open_topic for the active tab.',
+        'Set chat title to suggestedChatTitle.',
+        'Prefill exactly: What are you studying?',
+        'acknowledge=true after applying.',
+      ].join('\n'),
+    ),
+)
+
 async function main() {
   loadHarness()
+  await ensureSeedTopics()
   const transport = new StdioServerTransport()
   await server.connect(transport)
   console.error(`lattice-harness MCP on stdio · state ${HARNESS_PATH}`)

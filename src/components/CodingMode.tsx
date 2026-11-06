@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { CODING_TASKS, type CodingTask } from '../data/coding'
+import { recordOutcome } from '../lib/api'
 import { Button } from './ui/button'
 import { cn } from '../lib/utils'
 
@@ -19,7 +20,7 @@ const TRACK_LABEL: Record<CodingTask['track'], string> = {
   'systems-rl': 'Systems / RL',
 }
 
-export function CodingMode() {
+export function CodingMode({ topicId }: { topicId: string }) {
   const [taskId, setTaskId] = useState(CODING_TASKS[0].id)
   const task = useMemo(() => {
     const t = CODING_TASKS.find((x) => x.id === taskId)
@@ -40,6 +41,18 @@ export function CodingMode() {
     setHintOpen(false)
     setSolutionOpen(false)
     setResult(null)
+  }
+
+  function check() {
+    const out = runCheck(task, code)
+    setResult(out)
+    void recordOutcome({
+      topicId,
+      kind: 'coding',
+      itemKey: task.id,
+      label: task.title,
+      outcome: out.ok ? 'pass' : 'fail',
+    })
   }
 
   return (
@@ -69,7 +82,7 @@ export function CodingMode() {
       />
 
       <div className="flex flex-wrap gap-2">
-        <Button size="sm" onClick={() => setResult(runCheck(task, code))}>
+        <Button size="sm" onClick={check}>
           Run checks
         </Button>
         <Button size="sm" variant="ghost" onClick={() => setHintOpen((v) => !v)}>

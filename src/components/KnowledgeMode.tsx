@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { MCQS, TOPIC_LABELS, type Difficulty, type Mcq, type McqTopic } from '../data/mcqs'
+import { recordOutcome } from '../lib/api'
 import { Button } from './ui/button'
 import { cn } from '../lib/utils'
 
@@ -24,8 +25,8 @@ function buildDeck(topic: TopicFilter): Mcq[] {
   return shuffle(filtered)
 }
 
-export function KnowledgeMode() {
-  const [topic, setTopic] = useState<TopicFilter>(ALL)
+export function KnowledgeMode({ topicId }: { topicId: string }) {
+  const [slice, setSlice] = useState<TopicFilter>(ALL)
   const [deck, setDeck] = useState<Mcq[]>(() => buildDeck(ALL))
   const [index, setIndex] = useState(0)
   const [picked, setPicked] = useState<number | null>(null)
@@ -34,8 +35,8 @@ export function KnowledgeMode() {
   const empty = deck.length === 0
   const q = deck[index]
 
-  function selectTopic(next: TopicFilter) {
-    setTopic(next)
+  function selectSlice(next: TopicFilter) {
+    setSlice(next)
     setPicked(null)
     setLoading(true)
     window.setTimeout(() => {
@@ -43,6 +44,19 @@ export function KnowledgeMode() {
       setIndex(0)
       setLoading(false)
     }, 120)
+  }
+
+  function pick(i: number) {
+    if (!q || picked !== null) return
+    setPicked(i)
+    const outcome = i === q.answerIndex ? 'correct' : 'wrong'
+    void recordOutcome({
+      topicId,
+      kind: 'mcq',
+      itemKey: q.id,
+      label: q.question.slice(0, 120),
+      outcome,
+    })
   }
 
   const correct = picked !== null && q && picked === q.answerIndex
@@ -70,10 +84,10 @@ export function KnowledgeMode() {
           id="topic"
           aria-label="Topic"
           className="h-9 rounded border-0 bg-panel-2 px-2 text-sm text-foam"
-          value={topic}
-          onChange={(e) => selectTopic(e.target.value as TopicFilter)}
+          value={slice}
+          onChange={(e) => selectSlice(e.target.value as TopicFilter)}
         >
-          <option value={ALL}>All topics ({MCQS.length})</option>
+          <option value={ALL}>All slices ({MCQS.length})</option>
           {Object.entries(TOPIC_LABELS).map(([k, label]) => {
             const n = MCQS.filter((q) => q.topic === k).length
             return (
@@ -91,8 +105,8 @@ export function KnowledgeMode() {
       {!loading && empty && (
         <div className="space-y-3">
           <p className="text-sm text-mist">No questions in this slice.</p>
-          <Button size="sm" onClick={() => selectTopic(ALL)}>
-            All topics
+          <Button size="sm" onClick={() => selectSlice(ALL)}>
+            All slices
           </Button>
         </div>
       )}
@@ -116,7 +130,7 @@ export function KnowledgeMode() {
                   key={i}
                   type="button"
                   disabled={picked !== null}
-                  onClick={() => setPicked(i)}
+                  onClick={() => pick(i)}
                   className={cn(
                     'px-0 py-2 text-left text-sm transition',
                     picked === null && 'text-foam hover:text-teal',

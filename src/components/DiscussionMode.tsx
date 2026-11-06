@@ -15,7 +15,13 @@ import {
 import { Button } from './ui/button'
 import { cn } from '../lib/utils'
 
-export function DiscussionMode() {
+export function DiscussionMode({
+  topicId,
+  topicTitle,
+}: {
+  topicId: string
+  topicTitle: string
+}) {
   const [harness, setHarness] = useState<HarnessState>(defaultHarness)
   const [status, setStatus] = useState<'loading' | 'live' | 'offline'>('loading')
   const [path, setPath] = useState<string>('.lattice/harness-state.json')
@@ -85,6 +91,9 @@ export function DiscussionMode() {
             {status === 'live' ? 'live' : status === 'loading' ? '…' : 'offline'}
           </span>
         </div>
+        <p className="text-sm text-mist">
+          Study topic: <span className="text-foam">{topicTitle || topicId}</span>
+        </p>
 
         <div className="grid gap-3 sm:grid-cols-2">
           <label className="block space-y-1 text-xs text-mist">

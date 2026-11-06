@@ -1,44 +1,46 @@
 # Lattice
 
-Desktop-applet study desk for **OpenAI / Anthropic research scientist** interview prep (elite / &lt;1% bar).
+Quiet study desk for research-scientist interview prep (and any topic you add).
 
 ## Modes
 
-1. **Knowledge** — MCQs on attention/masking, scaling, RLHF/DPO, Spinning Up–style policy gradients, interpretability, evals/work-trial empirics, multimodal, safety (CAI, reward hacking, oversight), systems/inference, and lab culture differentials. Empty / loading / right-wrong + explanations.
-2. **Coding** — Screen-faithful drills: masked causal softmax, 1NN-in-FFN sketch, request batcher, toy DB with CAS, stable softmax, KL penalty. In-browser editor, checks, hints, solutions.
-3. **Discussion (MCP harness)** — Not an in-app chat coach. Run `npm run mcp` and attach the server from Cursor (or any MCP host). The **host LLM agent** runs the longer-form interview; Lattice supplies tools / resources / prompts aligned to the loop (screening → mid → onsite, OpenAI empirics vs Anthropic taste/oversight). The applet shows connect docs, tool catalog, and harness session controls that read/write `.lattice/harness-state.json`.
+- **Knowledge** — MCQs; outcomes write to the learner journey
+- **Coding** — screen-faithful drills; pass/fail → journey buckets
+- **Discussion** — MCP harness for a host agent (not in-app chat)
+- **Journey** — struggles / quick-forget / confirmed knowledge bank
 
-Content bar: see the durable blueprint in the project store at `docs/interview-loop-blueprint.md` (mirrored conceptually in `mcp/blueprint.ts`).
+Topic tabs are **arbitrary** (Add your own). Seeds ship for convenience only.
 
-## Run the applet
+## Run
 
 ```bash
 npm install
-npm run dev
+npm run dev          # http://127.0.0.1:4627  (PGlite when DATABASE_URL unset)
+npm run mcp          # stdio MCP harness
+npm run build && npm run start
 ```
 
-Dev server: **http://127.0.0.1:4627**
+## Database
 
-```bash
-npm run build
-npm run preview
-```
+- `cursor-app.json` → `{ "database": "postgres" }`
+- Schema: `migrations/001_journey.sql`
+- Published apps get `DATABASE_URL` from the platform (do not bind it as a secret)
+- Local / this VM: **PGlite** under `.lattice/pgdata` when `DATABASE_URL` is unset
 
-## Run the MCP discussion harness
+### Schema (summary)
 
-```bash
-npm run mcp
-```
-
-stdio MCP server (`mcp/server.ts`). Optional env:
-
-| Variable | Purpose |
+| Table | Purpose |
 | --- | --- |
-| `LATTICE_HARNESS_PATH` | Override harness JSON path (default `.lattice/harness-state.json`) |
+| `topics` | Arbitrary study topic tabs |
+| `journey_items` | Per-learner items in `struggle` \| `quick_forget` \| `confirmed` |
+| `outcome_events` | Append-only MCQ/coding outcomes |
+| `topic_sessions` | First-connect acknowledgements |
 
-### Cursor MCP config
+Bucket rules: wrong/fail → struggle; first success after struggle → quick_forget; another success → confirmed; due `next_review_at` surfaces under quick-forget.
 
-Add to your MCP settings (set `cwd` to this repo):
+Learner key: Cursor identity `sub` when signed in; else `local-learner`.
+
+## MCP
 
 ```json
 {
@@ -52,18 +54,24 @@ Add to your MCP settings (set `cwd` to this repo):
 }
 ```
 
-A copyable snippet also lives in the applet **Discussion** tab.
+### Journey / topics
 
-### Tools / prompts / resources
+| Tool | Role |
+| --- | --- |
+| `list_study_topics` / `create_study_topic` | Arbitrary topic tabs |
+| `open_topic` | First-connect: `suggestedChatTitle`, `prefillMessage` |
+| `get_journey` / `record_outcome` / `set_journey_bucket` | Journey banks |
 
-- **Tools:** `list_topics`, `get_harness`, `set_harness`, `start_round`, `probe`, `critique_answer`, `summarize_session`, `reset_harness`
-- **Prompts:** `screen-research-agenda`, `openai-ml-math-live`, `anthropic-coderpad`, `openai-work-trial`, `anthropic-research-day`, `onsite-defense`, `mission-gate`, `theory-spinning-up`
-- **Resources:** `lattice://blueprint`, `lattice://harness`, `lattice://topics`
+Resources: `lattice://study-topics`, `lattice://journey`, `lattice://skill/first-connect`  
+Prompt: `first-connect`
 
-Typical flow: host agent calls `set_harness` → `start_round` → interviews you in chat → `probe` / `critique_answer` → `summarize_session`.
+### Title + prefill (agent first-connect)
 
-Local applet harness controls POST/GET `/api/harness` (Vite middleware) so the UI can sync the same state file the MCP process uses. Published static builds still show connect instructions and catalogs; live file sync needs local `npm run dev`.
+1. Host calls `open_topic` for the active tab (or prompt `first-connect`)
+2. Sets chat/agent title to `Lattice · {topic title}`
+3. Prefills exactly: **What are you studying?**
+4. Calls `open_topic` again with `acknowledge: true`
 
-## Stack
+Skill doc: `skills/first-connect.md`
 
-Vite · React · TypeScript · Tailwind CSS v4 · `@modelcontextprotocol/sdk`
+Optional: `LATTICE_HARNESS_PATH` for harness JSON path.

@@ -19,17 +19,24 @@ export type HarnessState = {
 }
 
 export const TOOL_CATALOG = [
-  { name: 'list_topics', use: 'List drills by stage/lab' },
-  { name: 'get_harness', use: 'Read active harness state' },
-  { name: 'set_harness', use: 'Set topic/stage/lab/depth/style/focus' },
-  { name: 'start_round', use: 'Open a host-agent interview round brief' },
+  { name: 'list_topics', use: 'List RS drills by stage/lab' },
+  { name: 'list_study_topics', use: 'List arbitrary topic tabs' },
+  { name: 'create_study_topic', use: 'Create a topic tab' },
+  { name: 'open_topic', use: 'First-connect title + prefill' },
+  { name: 'get_journey', use: 'Struggles / quick-forget / confirmed' },
+  { name: 'record_outcome', use: 'Write MCQ/coding outcome' },
+  { name: 'set_journey_bucket', use: 'Manual bucket placement' },
+  { name: 'get_harness', use: 'Read harness state' },
+  { name: 'set_harness', use: 'Set stage/lab/depth/style/focus' },
+  { name: 'start_round', use: 'Open host-agent round brief' },
   { name: 'probe', use: 'followup | harder | systems | mission | falsifier' },
-  { name: 'critique_answer', use: 'Rigor scaffold on a candidate answer' },
+  { name: 'critique_answer', use: 'Rigor scaffold on an answer' },
   { name: 'summarize_session', use: 'Loop-position coaching plan' },
   { name: 'reset_harness', use: 'Back to defaults' },
 ] as const
 
 export const PROMPT_CATALOG = [
+  'first-connect',
   'screen-research-agenda',
   'openai-ml-math-live',
   'anthropic-coderpad',
@@ -44,6 +51,9 @@ export const RESOURCE_CATALOG = [
   { uri: 'lattice://blueprint', name: 'Interview loop blueprint' },
   { uri: 'lattice://harness', name: 'Live harness JSON' },
   { uri: 'lattice://topics', name: 'Drill topic catalog' },
+  { uri: 'lattice://study-topics', name: 'Learner topic tabs' },
+  { uri: 'lattice://journey', name: 'Learner journey banks' },
+  { uri: 'lattice://skill/first-connect', name: 'First-connect skill' },
 ] as const
 
 export const TOPICS = [
