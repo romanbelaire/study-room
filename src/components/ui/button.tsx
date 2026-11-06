@@ -8,8 +8,8 @@ const buttonVariants = cva(
     variants: {
       variant: {
         default: 'bg-teal text-ink hover:brightness-110',
-        secondary: 'bg-panel-2 text-foam border border-line hover:border-teal/50',
-        ghost: 'text-mist hover:bg-panel-2 hover:text-foam',
+        secondary: 'bg-panel-2 text-foam hover:brightness-110',
+        ghost: 'text-mist hover:text-foam',
         amber: 'bg-amber text-ink hover:brightness-105',
         danger: 'bg-coral/90 text-ink hover:brightness-110',
       },

@@ -1,11 +1,9 @@
 import { useMemo, useState } from 'react'
-import { CheckCircle2, CircleX, Loader2 } from 'lucide-react'
 import { MCQS, TOPIC_LABELS, type Difficulty, type Mcq, type McqTopic } from '../data/mcqs'
 import { Button } from './ui/button'
 import { cn } from '../lib/utils'
 
 const ALL = 'all'
-
 type TopicFilter = McqTopic | typeof ALL
 
 function shuffle<T>(arr: T[]): T[] {
@@ -28,7 +26,6 @@ function buildDeck(topic: TopicFilter): Mcq[] {
 
 export function KnowledgeMode() {
   const [topic, setTopic] = useState<TopicFilter>(ALL)
-  // Synchronous seed — first paint must show questions (publish preview was 0/0 blank).
   const [deck, setDeck] = useState<Mcq[]>(() => buildDeck(ALL))
   const [index, setIndex] = useState(0)
   const [picked, setPicked] = useState<number | null>(null)
@@ -45,7 +42,7 @@ export function KnowledgeMode() {
       setDeck(buildDeck(next))
       setIndex(0)
       setLoading(false)
-    }, 160)
+    }, 120)
   }
 
   const correct = picked !== null && q && picked === q.answerIndex
@@ -67,14 +64,12 @@ export function KnowledgeMode() {
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-3">
-      <div className="flex flex-wrap items-center gap-2">
-        <label className="text-xs text-mist" htmlFor="topic">
-          Topic
-        </label>
+    <div className="flex flex-col gap-6">
+      <div className="flex flex-wrap items-center gap-3">
         <select
           id="topic"
-          className="h-8 rounded-md border border-line bg-panel-2 px-2 text-sm text-foam"
+          aria-label="Topic"
+          className="h-9 rounded border-0 bg-panel-2 px-2 text-sm text-foam"
           value={topic}
           onChange={(e) => selectTopic(e.target.value as TopicFilter)}
         >
@@ -91,39 +86,24 @@ export function KnowledgeMode() {
         <span className="ml-auto font-mono text-xs text-mist">{progress}</span>
       </div>
 
-      {loading && (
-        <div className="animate-rise flex flex-1 flex-col gap-3 rounded-lg border border-line bg-panel-2/60 p-4">
-          <div className="flex items-center gap-2 text-sm text-mist">
-            <Loader2 className="h-4 w-4 animate-spin text-teal" />
-            Shuffling knowledge checks…
-          </div>
-          <div className="skeleton h-5 w-2/3 rounded" />
-          <div className="skeleton h-12 w-full rounded" />
-          <div className="skeleton h-10 w-full rounded" />
-          <div className="skeleton h-10 w-5/6 rounded" />
-        </div>
-      )}
+      {loading && <p className="text-sm text-mist">Shuffling…</p>}
 
       {!loading && empty && (
-        <div className="animate-rise flex flex-1 flex-col items-start justify-center gap-2 rounded-lg border border-dashed border-line bg-panel-2/40 p-6">
-          <p className="font-display text-xl text-amber">No questions in this slice</p>
-          <p className="max-w-md text-sm text-mist">
-            That topic filter is empty in the seed deck ({MCQS.length} total). Switch to All topics.
-          </p>
+        <div className="space-y-3">
+          <p className="text-sm text-mist">No questions in this slice.</p>
           <Button size="sm" onClick={() => selectTopic(ALL)}>
-            Show all topics
+            All topics
           </Button>
         </div>
       )}
 
       {!loading && !empty && q && (
-        <div className="animate-rise flex min-h-0 flex-1 flex-col gap-3 overflow-auto">
-          <div className="rounded-lg border border-line bg-panel-2/70 p-4">
-            <div className="mb-2 flex flex-wrap items-center gap-2 text-[11px] uppercase tracking-wide text-mist">
-              <span className="rounded bg-ink/50 px-1.5 py-0.5 text-teal">{TOPIC_LABELS[q.topic]}</span>
-              <span className="rounded bg-ink/50 px-1.5 py-0.5 text-amber">{q.difficulty}</span>
-            </div>
-            <p className="text-base leading-relaxed text-foam">{q.question}</p>
+        <div className="flex flex-col gap-5">
+          <div>
+            <p className="mb-2 text-xs text-mist">
+              {TOPIC_LABELS[q.topic]} · {q.difficulty}
+            </p>
+            <p className="text-lg leading-snug text-foam">{q.question}</p>
           </div>
 
           <div className="flex flex-col gap-2">
@@ -138,15 +118,14 @@ export function KnowledgeMode() {
                   disabled={picked !== null}
                   onClick={() => setPicked(i)}
                   className={cn(
-                    'rounded-md border px-3 py-2.5 text-left text-sm transition',
-                    picked === null && 'border-line bg-panel hover:border-teal/60',
-                    showRight && 'border-ok/70 bg-ok/10',
-                    showWrong && 'border-coral/70 bg-coral/10',
-                    selected && correct && 'border-ok bg-ok/15',
-                    picked !== null && !showRight && !showWrong && 'opacity-60',
+                    'px-0 py-2 text-left text-sm transition',
+                    picked === null && 'text-foam hover:text-teal',
+                    showRight && 'text-ok',
+                    showWrong && 'text-coral',
+                    picked !== null && !showRight && !showWrong && 'text-mist/50',
                   )}
                 >
-                  <span className="mr-2 font-mono text-xs text-mist">{String.fromCharCode(65 + i)}.</span>
+                  <span className="mr-2 font-mono text-xs text-mist">{String.fromCharCode(65 + i)}</span>
                   {choice}
                 </button>
               )
@@ -154,29 +133,14 @@ export function KnowledgeMode() {
           </div>
 
           {picked !== null && (
-            <div
-              className={cn(
-                'animate-rise-delay rounded-lg border p-3 text-sm',
-                correct ? 'border-ok/50 bg-ok/10' : 'border-coral/50 bg-coral/10',
-              )}
-            >
-              <div className="mb-1 flex items-center gap-1.5 font-medium">
-                {correct ? (
-                  <>
-                    <CheckCircle2 className="h-4 w-4 text-ok" /> Correct
-                  </>
-                ) : (
-                  <>
-                    <CircleX className="h-4 w-4 text-coral" /> Not quite
-                  </>
-                )}
-              </div>
-              <p className="text-foam/90 leading-relaxed">{q.explanation}</p>
-              <div className="mt-3">
-                <Button size="sm" variant="amber" onClick={next}>
-                  Next question
-                </Button>
-              </div>
+            <div className="space-y-3 border-t border-line/60 pt-4">
+              <p className={cn('text-sm font-medium', correct ? 'text-ok' : 'text-coral')}>
+                {correct ? 'Correct' : 'Not quite'}
+              </p>
+              <p className="text-sm leading-relaxed text-mist">{q.explanation}</p>
+              <Button size="sm" variant="amber" onClick={next}>
+                Next
+              </Button>
             </div>
           )}
         </div>

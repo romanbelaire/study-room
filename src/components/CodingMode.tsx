@@ -1,5 +1,4 @@
 import { useMemo, useState } from 'react'
-import { Eye, Lightbulb, Play, RotateCcw } from 'lucide-react'
 import { CODING_TASKS, type CodingTask } from '../data/coding'
 import { Button } from './ui/button'
 import { cn } from '../lib/utils'
@@ -8,11 +7,9 @@ function runCheck(task: CodingTask, code: string): { ok: boolean; message: strin
   const wrapped = `${code}\n;${task.check}\n;return check(solve);`
   try {
     const fn = new Function(wrapped)
-    const message = String(fn())
-    return { ok: true, message }
+    return { ok: true, message: String(fn()) }
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err)
-    return { ok: false, message }
+    return { ok: false, message: err instanceof Error ? err.message : String(err) }
   }
 }
 
@@ -46,50 +43,40 @@ export function CodingMode() {
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-3">
-      <div className="flex flex-wrap items-center gap-2">
-        <label className="text-xs text-mist" htmlFor="task">
-          Task
-        </label>
-        <select
-          id="task"
-          className="h-8 max-w-full rounded-md border border-line bg-panel-2 px-2 text-sm text-foam"
-          value={taskId}
-          onChange={(e) => selectTask(e.target.value)}
-        >
-          {CODING_TASKS.map((t) => (
-            <option key={t.id} value={t.id}>
-              {t.title} · {TRACK_LABEL[t.track]} · {t.difficulty}
-            </option>
-          ))}
-        </select>
-      </div>
+    <div className="flex flex-col gap-5">
+      <select
+        id="task"
+        aria-label="Task"
+        className="h-9 max-w-full rounded border-0 bg-panel-2 px-2 text-sm text-foam"
+        value={taskId}
+        onChange={(e) => selectTask(e.target.value)}
+      >
+        {CODING_TASKS.map((t) => (
+          <option key={t.id} value={t.id}>
+            {t.title} · {TRACK_LABEL[t.track]} · {t.difficulty}
+          </option>
+        ))}
+      </select>
 
-      <div className="rounded-lg border border-line bg-panel-2/70 p-3">
-        <p className="mb-1 text-[11px] uppercase tracking-wide text-teal">{TRACK_LABEL[task.track]}</p>
-        <p className="text-sm leading-relaxed text-foam">{task.prompt}</p>
-      </div>
+      <p className="text-sm leading-relaxed text-mist">{task.prompt}</p>
 
       <textarea
         value={code}
         onChange={(e) => setCode(e.target.value)}
         spellCheck={false}
-        className="min-h-[180px] flex-1 resize-y rounded-lg border border-line bg-ink/80 p-3 font-mono text-[13px] leading-relaxed text-foam focus:border-teal/50 focus:outline-none"
+        className="min-h-[200px] resize-y rounded bg-ink/80 p-3 font-mono text-[13px] leading-relaxed text-foam focus:outline-none focus:ring-1 focus:ring-teal/40"
         aria-label="Code editor"
       />
 
       <div className="flex flex-wrap gap-2">
         <Button size="sm" onClick={() => setResult(runCheck(task, code))}>
-          <Play className="h-3.5 w-3.5" />
           Run checks
         </Button>
-        <Button size="sm" variant="secondary" onClick={() => setHintOpen((v) => !v)}>
-          <Lightbulb className="h-3.5 w-3.5" />
+        <Button size="sm" variant="ghost" onClick={() => setHintOpen((v) => !v)}>
           {hintOpen ? 'Hide hint' : 'Hint'}
         </Button>
-        <Button size="sm" variant="secondary" onClick={() => setSolutionOpen((v) => !v)}>
-          <Eye className="h-3.5 w-3.5" />
-          {solutionOpen ? 'Hide solution' : 'Reveal solution'}
+        <Button size="sm" variant="ghost" onClick={() => setSolutionOpen((v) => !v)}>
+          {solutionOpen ? 'Hide solution' : 'Solution'}
         </Button>
         <Button
           size="sm"
@@ -99,33 +86,21 @@ export function CodingMode() {
             setResult(null)
           }}
         >
-          <RotateCcw className="h-3.5 w-3.5" />
           Reset
         </Button>
       </div>
 
-      {hintOpen && (
-        <p className="animate-rise rounded-md border border-amber/30 bg-amber/10 px-3 py-2 text-sm text-amber">
-          {task.hint}
-        </p>
-      )}
+      {hintOpen && <p className="text-sm text-amber">{task.hint}</p>}
 
       {solutionOpen && (
-        <pre className="animate-rise overflow-auto rounded-md border border-line bg-ink/70 p-3 font-mono text-xs text-mist">
-          {task.solution}
-        </pre>
+        <pre className="overflow-auto bg-ink/60 p-3 font-mono text-xs text-mist">{task.solution}</pre>
       )}
 
       {result && (
-        <div
-          className={cn(
-            'animate-rise rounded-md border px-3 py-2 text-sm',
-            result.ok ? 'border-ok/50 bg-ok/10 text-ok' : 'border-coral/50 bg-coral/10 text-coral',
-          )}
-        >
+        <p className={cn('text-sm', result.ok ? 'text-ok' : 'text-coral')}>
           {result.ok ? 'Passed: ' : 'Failed: '}
           {result.message}
-        </div>
+        </p>
       )}
     </div>
   )
