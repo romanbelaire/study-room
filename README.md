@@ -2,60 +2,38 @@
 
 Quiet study desk for research-scientist interview prep (and any topic you add).
 
-## Modes
+Modes: **Knowledge** (MCQs), **Coding** (untimed strict Python in the browser), **Discussion** (MCP harness for a host agent — not in-app chat), **Journey** (struggle / quick-forget / confirmed banks). Topic tabs are arbitrary.
 
-- **Knowledge** — MCQs; outcomes write to the learner journey
-- **Coding** — untimed strict Python in-browser (Pyodide + numpy); vendored MIT challenges; pass/fail → journey buckets; no in-app AI helpers
-- **Discussion** — MCP harness for a host agent (not in-app chat)
-- **Journey** — struggles / quick-forget / confirmed knowledge bank
-
-Topic tabs are **arbitrary** (Add your own). Seeds ship for convenience only.
-
-### MCQ authoring (standing rule)
-
-All alternate answers must match the correct answer in **complexity, length, specificity, and register** — no solving by “which option looks different.” Plausible near-misses only. Full checklist: `skills/mcq-authoring.md`.
-
-### Agent-generated sets
-
-Shipped seeds bootstrap Knowledge. Coding runs a **browser Pyodide** runner (Wasm + numpy) against a vendored MIT subset of [`ombharatiya/AI-Engineer-Interview-Questions`](https://github.com/ombharatiya/AI-Engineer-Interview-Questions) (`12-coding-challenges/`). Submitted code never executes on the Cursor host. See `vendor/ai-engineer-interview-questions/ATTRIBUTION.md`. The MCP agent can still author MCQ sets via `get_generation_brief` → `save_mcqs` (see `skills/generate-set.md`). Journey outcomes use challenge ids as item keys.
-
-## Coding runner
-
-- Challenges live under `vendor/ai-engineer-interview-questions/challenges/` (starter + PROBLEM + tests; reference kept on disk for offline smoke only — never sent to the client).
-- `GET /api/coding/python` serves problem / starter / tests only (read-only). There is **no** server-side execute endpoint.
-- The browser loads Pyodide from the public CDN, installs numpy in Wasm, writes `solution.py` + `tests.py` into the Pyodide FS, and runs the suite locally (25s client timeout).
-- Mode is **untimed** and **strict**: no hints, no solution reveal, no in-app AI helpers.
-
-## Run
+## Local run
 
 ```bash
 npm install
 npm run dev          # http://127.0.0.1:4627  (PGlite when DATABASE_URL unset)
-npm run mcp          # stdio MCP harness
 npm run build && npm run start
 ```
 
-## Database
+Requires Node 22+. First Coding run downloads Pyodide + numpy into the browser (CDN).
 
-- `cursor-app.json` → `{ "database": "postgres" }`
-- Schema: `migrations/001_journey.sql`
-- Published apps get `DATABASE_URL` from the platform (do not bind it as a secret)
-- Local / this VM: **PGlite** under `.lattice/pgdata` when `DATABASE_URL` is unset
+## Pyodide coding
 
-### Schema (summary)
+Coding is **untimed** and **strict** (no hints, no solution reveal, no in-app AI helpers).
 
-| Table | Purpose |
-| --- | --- |
-| `topics` | Arbitrary study topic tabs |
-| `journey_items` | Per-learner items in `struggle` \| `quick_forget` \| `confirmed` |
-| `outcome_events` | Append-only MCQ/coding outcomes |
-| `topic_sessions` | First-connect acknowledgements |
+- Challenges are a vendored MIT subset of [`ombharatiya/AI-Engineer-Interview-Questions`](https://github.com/ombharatiya/AI-Engineer-Interview-Questions) (`12-coding-challenges/`). See [`vendor/ai-engineer-interview-questions/ATTRIBUTION.md`](vendor/ai-engineer-interview-questions/ATTRIBUTION.md) and [`LICENSE`](vendor/ai-engineer-interview-questions/LICENSE).
+- Included: attention, sampling, PE/RoPE, LayerNorm/softmax, KV cache, mini-GPT.
+- `GET /api/coding/python` serves problem / starter / tests only (read-only). There is **no** server-side execute endpoint.
+- The browser loads Pyodide (Wasm), installs numpy, writes `solution.py` + `tests.py` into the Pyodide filesystem, and runs the suite locally. Submitted code never executes on the host.
 
-Bucket rules: wrong/fail → struggle; first success after struggle → quick_forget; another success → confirmed; due `next_review_at` surfaces under quick-forget.
+Offline smoke of reference solutions (optional, host only): `python3 tests.py` with `reference.py` copied as `solution.py` in a temp dir.
 
-Learner key: always Cursor identity `sub` (simulated locally via `cursor/identity.dev.ts`). DB API routes require a verified viewer; client-supplied learner IDs are ignored. Shared seed topics are read-only; user-created topics are owner-scoped.
+## MCP (your own Cursor agent)
 
-## MCP
+Start the stdio server from the repo root:
+
+```bash
+npm run mcp
+```
+
+Point Cursor at it with an `mcp.json` entry (Cursor → Settings → MCP, or project `.cursor/mcp.json`):
 
 ```json
 {
@@ -63,31 +41,29 @@ Learner key: always Cursor identity `sub` (simulated locally via `cursor/identit
     "lattice": {
       "command": "npx",
       "args": ["tsx", "mcp/server.ts"],
-      "cwd": "/absolute/path/to/lattice"
+      "cwd": "/absolute/path/to/study-room"
     }
   }
 }
 ```
 
-### Journey / topics
+Replace `cwd` with your clone path. The host agent uses Lattice tools for topics, journey banks, and generating MCQ sets — Discussion is this harness, not a built-in chat coach.
 
-| Tool | Role |
-| --- | --- |
-| `list_study_topics` / `create_study_topic` | Arbitrary topic tabs |
-| `open_topic` | First-connect: title + prefill; hints generate-set |
-| `get_generation_brief` / `save_mcqs` / `save_coding_tasks` / `list_topic_content` | Agent-authored study sets |
-| `get_journey` / `record_outcome` / `set_journey_bucket` | Journey banks |
+Useful tools: `list_study_topics`, `create_study_topic`, `open_topic`, `get_generation_brief`, `save_mcqs`, `get_journey`, `record_outcome`. Resources: `lattice://study-topics`, `lattice://journey`, `lattice://skill/first-connect`. Prompt: `first-connect`.
 
-Resources: `lattice://study-topics`, `lattice://journey`, `lattice://skill/first-connect`  
-Prompt: `first-connect`
+Skill docs: `skills/first-connect.md`, `skills/generate-set.md`, `skills/mcq-authoring.md`.
 
-### Title + prefill (agent first-connect)
+## Journey / database
 
-1. Host calls `open_topic` for the active tab (or prompt `first-connect`)
-2. Sets chat/agent title to `Lattice · {topic title}`
-3. Prefills exactly: **What are you studying?**
-4. Calls `open_topic` again with `acknowledge: true`
+- `cursor-app.json` → `{ "database": "postgres" }`
+- Schema: `migrations/*.sql` (topics, journey items, outcome events, topic sessions, generated content)
+- Local: **PGlite** under `.lattice/pgdata` when `DATABASE_URL` is unset
+- Published Cursor apps receive `DATABASE_URL` from the platform (do not bind it as an app secret)
 
-Skill doc: `skills/first-connect.md`
+Bucket rules: wrong/fail → struggle; first success after struggle → quick_forget; another success → confirmed; due `next_review_at` surfaces under quick-forget.
 
-Optional: `LATTICE_HARNESS_PATH` for harness JSON path.
+Learner key: Cursor identity `sub` (simulated locally via `cursor/identity.dev.ts`). DB API routes require a verified viewer.
+
+## Attribution
+
+Vendored coding challenges © Om / [ombharatiya/AI-Engineer-Interview-Questions](https://github.com/ombharatiya/AI-Engineer-Interview-Questions), **MIT License**. Full text: `vendor/ai-engineer-interview-questions/LICENSE`.
