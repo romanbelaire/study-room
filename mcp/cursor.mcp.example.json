@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "lattice": {
+      "command": "npx",
+      "args": ["tsx", "mcp/server.ts"],
+      "cwd": "/absolute/path/to/lattice"
+    }
+  }
+}

@@ -1,0 +1,90 @@
+@import "tailwindcss";
+
+@theme {
+  --font-display: "Fraunces", Georgia, serif;
+  --font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+
+  --color-ink: #071618;
+  --color-panel: #0f2a2e;
+  --color-panel-2: #14363b;
+  --color-line: #2a555c;
+  --color-mist: #9eb8bc;
+  --color-foam: #e7f2f1;
+  --color-amber: #e8c47a;
+  --color-teal: #5ec8b7;
+  --color-coral: #e07a6a;
+  --color-ok: #6fbf8a;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  color: var(--color-foam);
+  background:
+    radial-gradient(1200px 700px at 12% -10%, rgba(94, 200, 183, 0.18), transparent 55%),
+    radial-gradient(900px 600px at 88% 8%, rgba(232, 196, 122, 0.14), transparent 50%),
+    radial-gradient(800px 500px at 50% 110%, rgba(224, 122, 106, 0.1), transparent 45%),
+    linear-gradient(165deg, #041011 0%, #0b2428 42%, #102f34 100%);
+  background-attachment: fixed;
+}
+
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes pulse-dot {
+  0%,
+  100% {
+    opacity: 0.45;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.15);
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+.animate-rise {
+  animation: rise-in 0.45s ease-out both;
+}
+
+.animate-rise-delay {
+  animation: rise-in 0.55s ease-out 0.08s both;
+}
+
+.animate-pulse-dot {
+  animation: pulse-dot 1.6s ease-in-out infinite;
+}
+
+.skeleton {
+  background: linear-gradient(90deg, #14363b 20%, #1b464c 50%, #14363b 80%);
+  background-size: 200% 100%;
+  animation: shimmer 1.2s linear infinite;
+}
