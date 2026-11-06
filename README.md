@@ -11,6 +11,10 @@ Quiet study desk for research-scientist interview prep (and any topic you add).
 
 Topic tabs are **arbitrary** (Add your own). Seeds ship for convenience only.
 
+### MCQ authoring (standing rule)
+
+All alternate answers must match the correct answer in **complexity, length, specificity, and register** — no solving by “which option looks different.” Plausible near-misses only. Full checklist: `skills/mcq-authoring.md`.
+
 ## Run
 
 ```bash

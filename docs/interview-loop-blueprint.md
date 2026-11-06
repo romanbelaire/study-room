@@ -38,3 +38,4 @@ Rigor: **&lt;1% acceptance bar** — elite technical depth, no fluff. Prefer ope
 
 - **Knowledge / Coding** applet modes seed this bar.
 - **Discussion** = MCP harness (`npm run mcp`) the host agent attaches to — tools/prompts coach against this loop, not an in-app mock chat.
+- **MCQ distractors** must match the correct option in complexity, length, specificity, and register (`skills/mcq-authoring.md`).
