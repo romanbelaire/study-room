@@ -42,7 +42,7 @@ npm run build && npm run start
 
 Bucket rules: wrong/fail → struggle; first success after struggle → quick_forget; another success → confirmed; due `next_review_at` surfaces under quick-forget.
 
-Learner key: Cursor identity `sub` when signed in; else `local-learner`.
+Learner key: always Cursor identity `sub` (simulated locally via `cursor/identity.dev.ts`). DB API routes require a verified viewer; client-supplied learner IDs are ignored. Shared seed topics are read-only; user-created topics are owner-scoped.
 
 ## MCP
 

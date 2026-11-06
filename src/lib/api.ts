@@ -2,6 +2,7 @@ export type Topic = {
   id: string
   title: string
   notes: string
+  owner_id?: string | null
   created_at: string
   updated_at: string
 }

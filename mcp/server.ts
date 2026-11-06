@@ -590,22 +590,26 @@ server.registerTool(
   {
     title: 'List study topics',
     description: 'List arbitrary learner topic tabs (create your own; not limited to RS seeds).',
-    inputSchema: {},
+    inputSchema: {
+      learnerId: z.string().optional().describe('Local MCP learner key; defaults to mcp-local'),
+    },
   },
-  async () => text(await listStudyTopics()),
+  async ({ learnerId }) => text(await listStudyTopics(learnerId ?? 'mcp-local')),
 )
 
 server.registerTool(
   'create_study_topic',
   {
     title: 'Create study topic',
-    description: 'Create an arbitrary topic tab by title.',
+    description: 'Create an arbitrary topic tab by title (owned by learnerId).',
     inputSchema: {
       title: z.string(),
       notes: z.string().optional(),
+      learnerId: z.string().optional(),
     },
   },
-  async ({ title, notes }) => text(await createTopic(title, notes ?? '')),
+  async ({ title, notes, learnerId }) =>
+    text(await createTopic(title, notes ?? '', learnerId ?? 'mcp-local')),
 )
 
 server.registerTool(
@@ -617,9 +621,11 @@ server.registerTool(
     inputSchema: {
       topicId: z.string(),
       acknowledge: z.boolean().optional(),
+      learnerId: z.string().optional(),
     },
   },
-  async ({ topicId, acknowledge }) => text(await openTopicSession(topicId, Boolean(acknowledge))),
+  async ({ topicId, acknowledge, learnerId }) =>
+    text(await openTopicSession(topicId, Boolean(acknowledge), learnerId ?? 'mcp-local')),
 )
 
 server.registerTool(

@@ -5,6 +5,7 @@ export type Topic = {
   id: string
   title: string
   notes: string
+  owner_id: string | null
   created_at: string
   updated_at: string
 }
@@ -45,27 +46,47 @@ function addDays(days: number) {
 }
 
 export async function ensureSeedTopics(): Promise<void> {
-  const rows = await sql<{ count: string }>('select count(*)::text as count from topics')
-  if (Number(rows[0].count) > 0) return
   for (const t of SEED_TOPICS) {
     await sql(
-      `insert into topics (id, title, notes) values ($1, $2, $3)
+      `insert into topics (id, title, notes, owner_id) values ($1, $2, $3, null)
        on conflict (id) do nothing`,
       [t.id, t.title, ''],
     )
   }
 }
 
-export async function listTopics(): Promise<Topic[]> {
-  await ensureSeedTopics()
-  return sql<Topic>('select * from topics order by created_at asc')
+function assertTopicAccess(topic: Topic, learnerId: string, mutate: boolean): void {
+  const sharedSeed = topic.owner_id === null
+  if (sharedSeed && mutate) throw new Error('forbidden: cannot modify shared seed topics')
+  if (!sharedSeed && topic.owner_id !== learnerId) {
+    throw new Error('forbidden: topic not owned by viewer')
+  }
 }
 
-export async function createTopic(title: string, notes = ''): Promise<Topic> {
+export async function listTopics(learnerId: string): Promise<Topic[]> {
+  await ensureSeedTopics()
+  return sql<Topic>(
+    `select * from topics
+     where owner_id is null or owner_id = $1
+     order by created_at asc`,
+    [learnerId],
+  )
+}
+
+export async function createTopic(
+  title: string,
+  notes = '',
+  ownerId: string,
+): Promise<Topic> {
   const id = randomUUID()
   const trimmed = title.trim()
   if (!trimmed) throw new Error('Topic title required')
-  await sql(`insert into topics (id, title, notes) values ($1, $2, $3)`, [id, trimmed, notes])
+  await sql(`insert into topics (id, title, notes, owner_id) values ($1, $2, $3, $4)`, [
+    id,
+    trimmed,
+    notes,
+    ownerId,
+  ])
   const rows = await sql<Topic>('select * from topics where id = $1', [id])
   return rows[0]
 }
@@ -73,21 +94,26 @@ export async function createTopic(title: string, notes = ''): Promise<Topic> {
 export async function updateTopic(
   id: string,
   patch: { title?: string; notes?: string },
+  learnerId: string,
 ): Promise<Topic> {
   const cur = await sql<Topic>('select * from topics where id = $1', [id])
   if (!cur[0]) throw new Error(`Unknown topic ${id}`)
+  assertTopicAccess(cur[0], learnerId, true)
   const title = patch.title?.trim() || cur[0].title
   const notes = patch.notes ?? cur[0].notes
-  await sql(`update topics set title = $2, notes = $3, updated_at = now() where id = $1`, [
-    id,
-    title,
-    notes,
-  ])
+  await sql(
+    `update topics set title = $2, notes = $3, updated_at = now()
+     where id = $1 and owner_id = $4`,
+    [id, title, notes, learnerId],
+  )
   return (await sql<Topic>('select * from topics where id = $1', [id]))[0]
 }
 
-export async function deleteTopic(id: string): Promise<void> {
-  await sql('delete from topics where id = $1', [id])
+export async function deleteTopic(id: string, learnerId: string): Promise<void> {
+  const cur = await sql<Topic>('select * from topics where id = $1', [id])
+  if (!cur[0]) throw new Error(`Unknown topic ${id}`)
+  assertTopicAccess(cur[0], learnerId, true)
+  await sql('delete from topics where id = $1 and owner_id = $2', [id, learnerId])
 }
 
 export function firstConnectPayload(topic: Topic) {
@@ -105,9 +131,14 @@ export function firstConnectPayload(topic: Topic) {
   }
 }
 
-export async function openTopicSession(topicId: string, acknowledge = false) {
+export async function openTopicSession(
+  topicId: string,
+  acknowledge = false,
+  learnerId: string,
+) {
   const rows = await sql<Topic>('select * from topics where id = $1', [topicId])
   if (!rows[0]) throw new Error(`Unknown topic ${topicId}`)
+  assertTopicAccess(rows[0], learnerId, false)
   const payload = firstConnectPayload(rows[0])
   if (acknowledge) {
     await sql(
@@ -157,8 +188,9 @@ export async function recordOutcome(input: {
   outcome: Outcome
   notes?: string
 }): Promise<JourneyItem> {
-  const topic = await sql<Topic>('select id from topics where id = $1', [input.topicId])
+  const topic = await sql<Topic>('select * from topics where id = $1', [input.topicId])
   if (!topic[0]) throw new Error(`Unknown topic ${input.topicId}`)
+  assertTopicAccess(topic[0], input.learnerId, false)
 
   const existing = await sql<JourneyItem>(
     `select * from journey_items

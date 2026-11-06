@@ -1,5 +1,5 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import { getIdentity } from '../cursor/identity.ts'
+import { getIdentity, type PersonIdentity } from '../cursor/identity.ts'
 import { dbMode } from './db.ts'
 import {
   createTopic,
@@ -26,13 +26,26 @@ async function readBody(req: IncomingMessage): Promise<unknown> {
 function send(res: ServerResponse, status: number, body: unknown) {
   res.statusCode = status
   res.setHeader('Content-Type', 'application/json')
+  res.setHeader('Cache-Control', 'private, no-store')
   res.end(JSON.stringify(body))
 }
 
-async function learnerId(req: IncomingMessage): Promise<string> {
-  const id = await getIdentity(req)
-  if (id.verified) return id.sub
-  return 'local-learner'
+/** Require a verified Cursor viewer. Locally uses the simulated identity.dev viewer. */
+async function requireViewer(
+  req: IncomingMessage,
+  res: ServerResponse,
+): Promise<PersonIdentity | null> {
+  const identity = await getIdentity(req)
+  if (!identity.verified) {
+    send(res, 401, { error: 'unauthorized', reason: identity.reason })
+    return null
+  }
+  if (identity.kind === 'key') {
+    // Journey/topic UI is person-scoped; API keys are not admitted here.
+    send(res, 403, { error: 'forbidden', reason: 'person_required' })
+    return null
+  }
+  return identity
 }
 
 export async function handleApi(req: IncomingMessage, res: ServerResponse): Promise<boolean> {
@@ -51,14 +64,19 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse): Prom
       return true
     }
 
+    // All DB-backed routes require a verified viewer; learner id is always identity.sub.
+    const viewer = await requireViewer(req, res)
+    if (!viewer) return true
+    const learner = viewer.sub
+
     if (url.pathname === '/api/topics' && req.method === 'GET') {
-      send(res, 200, { topics: await listTopics() })
+      send(res, 200, { topics: await listTopics(learner) })
       return true
     }
 
     if (url.pathname === '/api/topics' && req.method === 'POST') {
       const body = (await readBody(req)) as { title?: string; notes?: string }
-      const topic = await createTopic(body.title ?? '', body.notes ?? '')
+      const topic = await createTopic(body.title ?? '', body.notes ?? '', learner)
       send(res, 201, { topic })
       return true
     }
@@ -66,12 +84,12 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse): Prom
     const topicMatch = url.pathname.match(/^\/api\/topics\/([^/]+)$/)
     if (topicMatch && req.method === 'PATCH') {
       const body = (await readBody(req)) as { title?: string; notes?: string }
-      const topic = await updateTopic(decodeURIComponent(topicMatch[1]), body)
+      const topic = await updateTopic(decodeURIComponent(topicMatch[1]), body, learner)
       send(res, 200, { topic })
       return true
     }
     if (topicMatch && req.method === 'DELETE') {
-      await deleteTopic(decodeURIComponent(topicMatch[1]))
+      await deleteTopic(decodeURIComponent(topicMatch[1]), learner)
       send(res, 200, { ok: true })
       return true
     }
@@ -82,13 +100,13 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse): Prom
       const session = await openTopicSession(
         decodeURIComponent(openMatch[1]),
         Boolean(body.acknowledge),
+        learner,
       )
       send(res, 200, session)
       return true
     }
 
     if (url.pathname === '/api/journey' && req.method === 'GET') {
-      const learner = url.searchParams.get('learnerId') || (await learnerId(req))
       const topicId = url.searchParams.get('topicId') || undefined
       send(res, 200, await getJourney(learner, topicId))
       return true
@@ -96,7 +114,6 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse): Prom
 
     if (url.pathname === '/api/journey/outcome' && req.method === 'POST') {
       const body = (await readBody(req)) as {
-        learnerId?: string
         topicId: string
         kind: ItemKind
         itemKey: string
@@ -104,15 +121,21 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse): Prom
         outcome: Outcome
         notes?: string
       }
-      const learner = body.learnerId || (await learnerId(req))
-      const item = await recordOutcome({ ...body, learnerId: learner })
+      const item = await recordOutcome({
+        learnerId: learner,
+        topicId: body.topicId,
+        kind: body.kind,
+        itemKey: body.itemKey,
+        label: body.label,
+        outcome: body.outcome,
+        notes: body.notes,
+      })
       send(res, 200, { item })
       return true
     }
 
     if (url.pathname === '/api/journey/bucket' && req.method === 'POST') {
       const body = (await readBody(req)) as {
-        learnerId?: string
         topicId: string
         kind: ItemKind
         itemKey: string
@@ -120,13 +143,19 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse): Prom
         bucket: Bucket
         notes?: string
       }
-      const learner = body.learnerId || (await learnerId(req))
-      const item = await setBucket({ ...body, learnerId: learner })
+      const item = await setBucket({
+        learnerId: learner,
+        topicId: body.topicId,
+        kind: body.kind,
+        itemKey: body.itemKey,
+        label: body.label,
+        bucket: body.bucket,
+        notes: body.notes,
+      })
       send(res, 200, { item })
       return true
     }
 
-    // Keep harness endpoints for Discussion mode
     if (url.pathname === '/api/harness') {
       const { default: harnessHandlers } = await import('./harness-http.ts')
       return harnessHandlers(req, res)
@@ -136,7 +165,8 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse): Prom
     return true
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
-    send(res, 500, { error: message })
+    const status = message.startsWith('forbidden:') ? 403 : 500
+    send(res, status, { error: message.replace(/^forbidden:\s*/, '') })
     return true
   }
 }
