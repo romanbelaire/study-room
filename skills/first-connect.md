@@ -9,7 +9,7 @@ Use when a learner opens a **topic tab** or an MCP host first attaches for that 
 3. Prefill the chat with exactly: **What are you studying?**
 4. Wait for the learner’s answer before probing.
 5. Call `open_topic` again with `acknowledge: true` after title + prefill are applied.
-6. **Generate a fresh set:** follow `lattice://skill/generate-set` — `get_generation_brief` → `save_mcqs` (distractor parity) → optional `save_coding_tasks`.
+6. **Curriculum is proactive:** the applet already calls `ensure-mcqs` on topic load. Optionally enrich with `get_generation_brief` → `save_mcqs` (distractor parity). Prefer Discussion **in the Lattice UI**; MCP `post_discussion_reply` if co-driving.
 7. Optionally read `lattice://journey` and tailor drills to struggles / quick-forget / confirmed.
 
 Works for **any** user-defined topic — not limited to OpenAI/Anthropic seeds. Shipped seeds are bootstrap only once generated content exists.

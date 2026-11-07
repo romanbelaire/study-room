@@ -126,9 +126,68 @@ export type ContentCoding = {
 export async function fetchMcqContent(topicId: string): Promise<{
   generated: ContentMcq[]
   preferGenerated: boolean
+  useSeeds?: boolean
 }> {
   return json(
     await fetch(`/api/content/mcqs?topicId=${encodeURIComponent(topicId)}`),
+  )
+}
+
+export async function ensureMcqs(
+  topicId: string,
+  opts?: { reason?: string; topUp?: boolean },
+): Promise<{
+  generatedCount: number
+  status: 'ready' | 'generating' | 'bootstrapped'
+  generated: ContentMcq[]
+  useSeeds: boolean
+}> {
+  return json(
+    await fetch('/api/content/ensure-mcqs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        topicId,
+        reason: opts?.reason ?? 'topic-load',
+        topUp: Boolean(opts?.topUp),
+      }),
+    }),
+  )
+}
+
+export type DiscussionMessage = {
+  id: string
+  topic_id: string
+  learner_id: string
+  role: 'user' | 'assistant' | 'system' | 'tool'
+  content: string
+  tool_name: string | null
+  tool_payload: string | null
+  created_at: string
+}
+
+export async function fetchDiscussionMessages(
+  topicId: string,
+  topicTitle: string,
+): Promise<DiscussionMessage[]> {
+  const q = new URLSearchParams({ topicId, topicTitle })
+  const data = await json<{ messages: DiscussionMessage[] }>(
+    await fetch(`/api/discussion/messages?${q}`),
+  )
+  return data.messages
+}
+
+export async function sendDiscussionMessage(
+  topicId: string,
+  topicTitle: string,
+  content: string,
+): Promise<{ messages: DiscussionMessage[]; tools: unknown[] }> {
+  return json(
+    await fetch('/api/discussion/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ topicId, topicTitle, content }),
+    }),
   )
 }
 

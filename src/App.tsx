@@ -46,8 +46,14 @@ export default function App() {
     setConnectHint(null)
     const session = await openTopic(id, false)
     setConnectHint(
-      `${session.suggestedChatTitle} · “${session.prefillMessage}” · then generate set`,
+      `${session.suggestedChatTitle} · curriculum generates on Knowledge load`,
     )
+    // Proactive MCQ generation also fires from KnowledgeMode; Discussion chat can top up too.
+    void fetch('/api/content/ensure-mcqs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ topicId: id, reason: 'topic-select' }),
+    }).catch(() => {})
   }
 
   async function onAddTopic() {

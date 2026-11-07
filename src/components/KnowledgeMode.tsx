@@ -1,6 +1,11 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { MCQS, type Difficulty } from '../data/mcqs'
-import { fetchMcqContent, recordOutcome, type ContentMcq } from '../lib/api'
+import {
+  ensureMcqs,
+  fetchMcqContent,
+  recordOutcome,
+  type ContentMcq,
+} from '../lib/api'
 import { Button } from './ui/button'
 import { cn } from '../lib/utils'
 
@@ -36,40 +41,72 @@ function buildDeck(items: ContentMcq[]): ContentMcq[] {
   )
 }
 
+/**
+ * Proactive curriculum: ensure generated MCQs on topic load; top up through progression.
+ * Seeds only as cold bootstrap when no generated set exists yet.
+ */
 export function KnowledgeMode({ topicId }: { topicId: string }) {
   const [deck, setDeck] = useState<ContentMcq[]>([])
   const [index, setIndex] = useState(0)
   const [picked, setPicked] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
   const [source, setSource] = useState<'generated' | 'seed'>('seed')
+  const [status, setStatus] = useState<string>('')
   const [error, setError] = useState<string | null>(null)
+  const answeredSinceTopUp = useRef(0)
 
   useEffect(() => {
     let cancelled = false
     setLoading(true)
     setPicked(null)
     setError(null)
-    fetchMcqContent(topicId)
-      .then((data) => {
+    setStatus('Generating curriculum…')
+    answeredSinceTopUp.current = 0
+
+    ensureMcqs(topicId, { reason: 'topic-load' })
+      .then((ensured) => {
         if (cancelled) return
-        if (data.preferGenerated && data.generated.length) {
+        if (ensured.generated.length) {
           setSource('generated')
-          setDeck(buildDeck(data.generated))
+          setDeck(buildDeck(ensured.generated))
+          setStatus(
+            ensured.status === 'bootstrapped'
+              ? 'agent set (just generated)'
+              : 'agent set',
+          )
         } else {
+          // Cold bootstrap only — temporary until generation lands.
           setSource('seed')
           setDeck(buildDeck(seedsAsContent()))
+          setStatus('seed bootstrap · waiting for agent set')
         }
         setIndex(0)
         setLoading(false)
       })
-      .catch((err) => {
+      .catch(async (err) => {
         if (cancelled) return
-        setSource('seed')
-        setDeck(buildDeck(seedsAsContent()))
+        try {
+          const data = await fetchMcqContent(topicId)
+          if (cancelled) return
+          if (data.generated.length) {
+            setSource('generated')
+            setDeck(buildDeck(data.generated))
+            setStatus('agent set')
+          } else {
+            setSource('seed')
+            setDeck(buildDeck(seedsAsContent()))
+            setStatus('seed bootstrap')
+          }
+        } catch {
+          setSource('seed')
+          setDeck(buildDeck(seedsAsContent()))
+          setStatus('seed bootstrap')
+        }
         setIndex(0)
         setLoading(false)
         setError(err instanceof Error ? err.message : String(err))
       })
+
     return () => {
       cancelled = true
     }
@@ -89,6 +126,7 @@ export function KnowledgeMode({ topicId }: { topicId: string }) {
       label: q.question.slice(0, 120),
       outcome,
     })
+    answeredSinceTopUp.current += 1
   }
 
   const correct = picked !== null && q && picked === q.answer_index
@@ -101,8 +139,22 @@ export function KnowledgeMode({ topicId }: { topicId: string }) {
 
   function next() {
     setPicked(null)
+    const nearEnd = index + 1 >= deck.length - 1
+    const everyFive = answeredSinceTopUp.current > 0 && answeredSinceTopUp.current % 5 === 0
+    if (nearEnd || everyFive) {
+      void ensureMcqs(topicId, { reason: 'progression-topup', topUp: true }).then((ensured) => {
+        if (!ensured.generated.length) return
+        setSource('generated')
+        setStatus('agent set (topped up)')
+        setDeck((prev) => {
+          const seen = new Set(prev.map((x) => x.id))
+          const extras = ensured.generated.filter((x) => !seen.has(x.id))
+          return extras.length ? [...prev, ...shuffle(extras)] : prev
+        })
+      })
+    }
     if (index + 1 >= deck.length) {
-      setDeck(shuffle(deck))
+      setDeck((d) => shuffle(d))
       setIndex(0)
       return
     }
@@ -112,17 +164,15 @@ export function KnowledgeMode({ topicId }: { topicId: string }) {
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-center gap-3">
-        <span className="text-xs text-mist">
-          {source === 'generated' ? 'agent set' : 'seed fallback'}
-        </span>
+        <span className="text-xs text-mist">{status || (source === 'generated' ? 'agent set' : 'seed')}</span>
         <span className="ml-auto font-mono text-xs text-mist">{progress}</span>
       </div>
 
-      {loading && <p className="text-sm text-mist">Loading…</p>}
-      {error && <p className="text-xs text-mist">Using seeds ({error})</p>}
+      {loading && <p className="text-sm text-mist">Loading curriculum…</p>}
+      {error && <p className="text-xs text-mist">Note: {error}</p>}
 
       {!loading && empty && (
-        <p className="text-sm text-mist">No questions yet — ask the MCP agent to generate a set.</p>
+        <p className="text-sm text-mist">No questions yet — generation is still running.</p>
       )}
 
       {!loading && !empty && q && (

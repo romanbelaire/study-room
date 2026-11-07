@@ -10,6 +10,15 @@ import {
 } from './content.ts'
 import { getPythonChallenge, listPythonChallenges } from './python-runner.ts'
 import {
+  ensureOpeningAssistantMessage,
+  runInAppDiscussionTurn,
+} from './agent-turn.ts'
+import {
+  appendDiscussionMessage,
+  listDiscussionMessages,
+} from './discussion.ts'
+import { ensureMcqCurriculum } from './generation.ts'
+import {
   createTopic,
   deleteTopic,
   getJourney,
@@ -171,7 +180,34 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse): Prom
         return true
       }
       const generated = await listGeneratedMcqs(topicId, learner)
-      send(res, 200, { generated, preferGenerated: generated.length > 0 })
+      send(res, 200, {
+        generated,
+        preferGenerated: generated.length > 0,
+        // Seeds only when nothing generated yet (cold bootstrap).
+        useSeeds: generated.length === 0,
+      })
+      return true
+    }
+
+    // Proactive curriculum: on topic load / progression top-up.
+    if (url.pathname === '/api/content/ensure-mcqs' && req.method === 'POST') {
+      const body = (await readBody(req)) as {
+        topicId?: string
+        reason?: string
+        topUp?: boolean
+      }
+      if (!body.topicId) {
+        send(res, 400, { error: 'topicId required' })
+        return true
+      }
+      const result = await ensureMcqCurriculum({
+        topicId: body.topicId,
+        learnerId: learner,
+        reason: body.reason ?? 'ensure',
+        topUp: Boolean(body.topUp),
+      })
+      const generated = await listGeneratedMcqs(body.topicId, learner)
+      send(res, 200, { ...result, generated, useSeeds: generated.length === 0 })
       return true
     }
 
@@ -251,6 +287,57 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse): Prom
     if (url.pathname === '/api/harness') {
       const { default: harnessHandlers } = await import('./harness-http.ts')
       return harnessHandlers(req, res)
+    }
+
+    // In-app discussion chat (harness config is session context for this thread).
+    if (url.pathname === '/api/discussion/messages' && req.method === 'GET') {
+      const topicId = url.searchParams.get('topicId')
+      if (!topicId) {
+        send(res, 400, { error: 'topicId required' })
+        return true
+      }
+      const topicTitle = url.searchParams.get('topicTitle') ?? ''
+      await ensureOpeningAssistantMessage({
+        topicId,
+        topicTitle: topicTitle || topicId,
+        learnerId: learner,
+      })
+      const messages = await listDiscussionMessages(topicId, learner)
+      send(res, 200, { messages })
+      return true
+    }
+
+    if (url.pathname === '/api/discussion/messages' && req.method === 'POST') {
+      const body = (await readBody(req)) as {
+        topicId?: string
+        topicTitle?: string
+        content?: string
+        /** If true, only append assistant text (MCP host reply) without running local tools. */
+        assistantOnly?: boolean
+      }
+      if (!body.topicId || typeof body.content !== 'string') {
+        send(res, 400, { error: 'topicId and content required' })
+        return true
+      }
+      if (body.assistantOnly) {
+        await appendDiscussionMessage({
+          topicId: body.topicId,
+          learnerId: learner,
+          role: 'assistant',
+          content: body.content,
+        })
+        const messages = await listDiscussionMessages(body.topicId, learner)
+        send(res, 200, { messages, tools: [] })
+        return true
+      }
+      const result = await runInAppDiscussionTurn({
+        topicId: body.topicId,
+        topicTitle: body.topicTitle ?? body.topicId,
+        learnerId: learner,
+        userText: body.content,
+      })
+      send(res, 200, result)
+      return true
     }
 
     send(res, 404, { error: 'not found' })

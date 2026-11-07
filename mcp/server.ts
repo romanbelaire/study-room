@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
- * Lattice discussion harness — MCP server for RS interview prep.
- * Attach from Cursor / any MCP host. Discussion happens in the host agent;
- * this server supplies loop structure, drills, probes, and critique scaffolds.
+ * Lattice discussion + curriculum MCP server for RS interview prep.
+ * In-app Discussion chat runs tool hooks locally; MCP hosts can also drain
+ * pending messages and post replies, and fulfill/enrich generated MCQ sets.
  *
  * Log only on stderr — stdout is JSON-RPC.
  */
@@ -795,6 +795,90 @@ server.registerTool(
     const mcqs = await listGeneratedMcqs(topicId, lid)
     const coding = await listGeneratedCoding(topicId, lid)
     return text({ mcqs, coding, preferGenerated: mcqs.length > 0 || coding.length > 0 })
+  },
+)
+
+server.registerTool(
+  'ensure_mcq_curriculum',
+  {
+    title: 'Ensure MCQ curriculum',
+    description:
+      'Proactively ensure a persisted generated MCQ set for a topic (bootstrap or top-up). Seeds are only a cold UI fallback.',
+    inputSchema: {
+      topicId: z.string(),
+      learnerId: z.string().optional(),
+      reason: z.string().optional(),
+      topUp: z.boolean().optional(),
+    },
+  },
+  async ({ topicId, learnerId, reason, topUp }) => {
+    const { ensureMcqCurriculum } = await import('../server/generation.ts')
+    return text(
+      await ensureMcqCurriculum({
+        topicId,
+        learnerId: learnerId ?? 'mcp-local',
+        reason: reason ?? 'mcp-ensure',
+        topUp: Boolean(topUp),
+      }),
+    )
+  },
+)
+
+server.registerTool(
+  'list_pending_discussion',
+  {
+    title: 'List pending discussion messages',
+    description:
+      'User messages in the Lattice in-app chat that still need an assistant reply (for host agents that co-drive Discussion).',
+    inputSchema: {
+      learnerId: z.string().optional(),
+    },
+  },
+  async ({ learnerId }) => {
+    const { listPendingUserMessages } = await import('../server/discussion.ts')
+    return text(await listPendingUserMessages(learnerId))
+  },
+)
+
+server.registerTool(
+  'post_discussion_reply',
+  {
+    title: 'Post discussion reply',
+    description: 'Post an assistant message into the Lattice in-app Discussion thread.',
+    inputSchema: {
+      topicId: z.string(),
+      content: z.string(),
+      learnerId: z.string().optional(),
+    },
+  },
+  async ({ topicId, content, learnerId }) => {
+    const { appendDiscussionMessage, listDiscussionMessages } = await import(
+      '../server/discussion.ts'
+    )
+    const lid = learnerId ?? 'mcp-local'
+    await appendDiscussionMessage({
+      topicId,
+      learnerId: lid,
+      role: 'assistant',
+      content,
+    })
+    return text({ messages: await listDiscussionMessages(topicId, lid) })
+  },
+)
+
+server.registerTool(
+  'get_discussion_thread',
+  {
+    title: 'Get discussion thread',
+    description: 'Fetch the in-app Discussion transcript for a topic/learner.',
+    inputSchema: {
+      topicId: z.string(),
+      learnerId: z.string().optional(),
+    },
+  },
+  async ({ topicId, learnerId }) => {
+    const { listDiscussionMessages } = await import('../server/discussion.ts')
+    return text(await listDiscussionMessages(topicId, learnerId ?? 'mcp-local'))
   },
 )
 
